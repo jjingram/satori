@@ -38,9 +38,9 @@ call = do
   return $ Call name args
 
 expression :: Parser Expression
-expression = try integer
-         <|> try variable
-         <|> Lexer.parens (try definition <|> try declaration <|> call)
+expression =
+  try integer <|> try variable <|>
+  Lexer.parens (try definition <|> try declaration <|> call)
 
 contents :: Parser a -> Parser a
 contents p = do

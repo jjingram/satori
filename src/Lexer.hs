@@ -3,8 +3,8 @@ module Lexer where
 import Text.Parsec ((<|>))
 import Text.Parsec (letter, digit)
 import Text.Parsec.Char (oneOf)
-import Text.Parsec.String (Parser)
 import Text.Parsec.Language (emptyDef)
+import Text.Parsec.String (Parser)
 
 import qualified Text.Parsec.Token as Token
 
@@ -14,23 +14,25 @@ symbol = oneOf "!$%&*+-./:<=>?@^_~"
 lexer :: Token.TokenParser ()
 lexer = Token.makeTokenParser style
   where
-    names = [ "lambda"
-            , "let"
-            , "define"
-            , "if"
-            , "eq"
-            , "add"
-            , "sub"
-            , "mul"
-            , "sdiv"
-            , "srem"
-            , "cons"
-            , "nth"
-            , "quote"
-            , "cast"
-            , "declare"
-            ]
-    style = emptyDef
+    names =
+      [ "lambda"
+      , "let"
+      , "define"
+      , "if"
+      , "eq"
+      , "add"
+      , "sub"
+      , "mul"
+      , "sdiv"
+      , "srem"
+      , "cons"
+      , "nth"
+      , "quote"
+      , "cast"
+      , "declare"
+      ]
+    style =
+      emptyDef
       { Token.commentStart = "#|"
       , Token.commentEnd = "|#"
       , Token.commentLine = ";"

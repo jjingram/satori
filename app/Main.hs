@@ -1,16 +1,16 @@
 module Main where
 
-import Control.Monad.Trans
+import           Control.Monad.Trans
 
-import System.IO
-import System.Environment
-import System.Console.Haskeline
+import           System.Console.Haskeline
+import           System.Environment
+import           System.IO
 
-import qualified LLVM.General.AST as AST
+import qualified LLVM.General.AST         as AST
 
-import Parser
-import Codegen
-import Emit
+import           Codegen
+import           Emit
+import           Parser
 
 initModule :: AST.Module
 initModule = emptyModule "my cool jit"
@@ -30,15 +30,15 @@ processFile fname = readFile fname >>= process initModule
 repl :: IO ()
 repl = runInputT defaultSettings (loop initModule)
   where
-  loop mod = do
-    minput <- getInputLine "? "
-    case minput of
-      Nothing -> outputStrLn ""
-      Just input -> do
-        modn <- liftIO $ process mod input
-        case modn of
-          Just modn -> loop modn
-          Nothing -> loop mod
+    loop mod = do
+      minput <- getInputLine "? "
+      case minput of
+        Nothing -> outputStrLn ""
+        Just input -> do
+          modn <- liftIO $ process mod input
+          case modn of
+            Just modn -> loop modn
+            Nothing -> loop mod
 
 main :: IO ()
 main = do
