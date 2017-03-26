@@ -9,11 +9,7 @@ import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.IntegerPredicate as IP
 
-import Control.Applicative
 import Control.Monad.Except
-import Data.Int
-import qualified Data.Map as Map
-import Data.Word
 
 import Codegen
 import qualified Syntax as S
@@ -21,37 +17,34 @@ import qualified Syntax as S
 toSig :: [String] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (integer, AST.Name x))
 
-codegenTop :: S.Expression -> LLVM ()
-codegenTop (S.Definition name args body) = do
-  define integer name fnargs bls
+codegenTop :: S.Toplevel -> LLVM ()
+codegenTop (S.Define name args body) = define integer name fnargs bls
   where
     fnargs = toSig args
     bls =
       createBlocks $
       execCodegen $ do
-        entry <- addBlock entryBlockName
-        setBlock entry
-        forM args $ \a -> do
+        entry' <- addBlock entryBlockName
+        _ <- setBlock entry'
+        forM_ args $ \a -> do
           var <- alloca integer
-          store var (local (AST.Name a))
+          _ <- store var (local (AST.Name a))
           assign a var
         cgen body >>= ret
-codegenTop (S.Declaration name args) = do
-  declare integer name fnargs
+codegenTop (S.Declare name args) = declare integer name fnargs
   where
     fnargs = toSig args
-codegenTop exp = do
-  define integer "main" [] blks
+codegenTop (S.Command expr) = define integer "main" [] blks
   where
     blks =
       createBlocks $
       execCodegen $ do
-        entry <- addBlock entryBlockName
-        setBlock entry
-        cgen exp >>= ret
+        entry' <- addBlock entryBlockName
+        _ <- setBlock entry'
+        cgen expr >>= ret
 
 lt :: AST.Operand -> AST.Operand -> Codegen AST.Operand
-lt a b = icmp IP.ULT a b
+lt = icmp IP.ULT
 
 cgen :: S.Expression -> Codegen AST.Operand
 cgen (S.Variable x) = getvar x >>= load
@@ -63,14 +56,14 @@ cgen (S.Call fn args) = do
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> [S.Expression] -> IO AST.Module
-codegen mod fns =
+codegen :: AST.Module -> S.Program -> IO AST.Module
+codegen m fns =
   withContext $ \context ->
     liftError $
-    withModuleFromAST context newast $ \m -> do
-      llstr <- moduleLLVMAssembly m
+    withModuleFromAST context newast $ \m' -> do
+      llstr <- moduleLLVMAssembly m'
       putStrLn llstr
       return newast
   where
     modn = mapM codegenTop fns
-    newast = runLLVM mod modn
+    newast = runLLVM m modn

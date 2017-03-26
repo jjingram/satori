@@ -1,25 +1,21 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 module Codegen where
 
-import Data.Function
-import Data.List
-import qualified Data.Map as Map
-import Data.String
-import Data.Word
+import           Data.Function
+import           Data.List
+import qualified Data.Map                           as Map
 
-import Control.Applicative
-import Control.Monad.State
+import           Control.Monad.State
 
-import LLVM.General.AST
-import qualified LLVM.General.AST as AST
-import LLVM.General.AST.Global
-
-import qualified LLVM.General.AST.Attribute as A
+import           LLVM.General.AST
+import qualified LLVM.General.AST                   as AST
+import qualified LLVM.General.AST.Attribute         as A
 import qualified LLVM.General.AST.CallingConvention as CC
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.IntegerPredicate as IP
+import qualified LLVM.General.AST.Constant          as C
+import           LLVM.General.AST.Global
+import qualified LLVM.General.AST.IntegerPredicate  as IP
 
 newtype LLVM a = LLVM
   { unLLVM :: State AST.Module a
@@ -69,24 +65,21 @@ uniqueName nm ns =
     Nothing -> (nm, Map.insert nm 1 ns)
     Just ix -> (nm ++ show ix, Map.insert nm (ix + 1) ns)
 
-instance IsString Name where
-  fromString = Name . fromString
-
 type SymbolTable = [(String, Operand)]
 
 data CodegenState = CodegenState
   { currentBlock :: Name
-  , blocks :: Map.Map Name BlockState
-  , symtab :: SymbolTable
-  , blockCount :: Int
-  , count :: Word
-  , names :: Names
+  , blocks       :: Map.Map Name BlockState
+  , symtab       :: SymbolTable
+  , blockCount   :: Int
+  , count        :: Word
+  , names        :: Names
   } deriving (Show)
 
 data BlockState = BlockState
-  { idx :: Int
+  { idx   :: Int
   , stack :: [Named Instruction]
-  , term :: Maybe (Named Terminator)
+  , term  :: Maybe (Named Terminator)
   } deriving (Show)
 
 newtype Codegen a = Codegen
@@ -100,10 +93,10 @@ createBlocks :: CodegenState -> [BasicBlock]
 createBlocks m = map makeBlock $ sortBlocks $ Map.toList (blocks m)
 
 makeBlock :: (Name, BlockState) -> BasicBlock
-makeBlock (l, (BlockState _ s t)) = BasicBlock l s (maketerm t)
+makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
   where
     maketerm (Just x) = x
-    maketerm Nothing = error $ "Block has no terminator: " ++ (show l)
+    maketerm Nothing  = error $ "Block has no terminator: " ++ show l
 
 entryBlockName :: String
 entryBlockName = "entry"
@@ -123,10 +116,10 @@ fresh = do
   modify $ \s -> s {count = 1 + i}
   return $ i + 1
 
-instr :: Instruction -> Codegen (Operand)
+instr :: Instruction -> Codegen Operand
 instr ins = do
   n <- fresh
-  let ref = (UnName n)
+  let ref = UnName n
   blk <- current
   let i = stack blk
   modifyBlock (blk {stack = i ++ [ref := ins]})
@@ -174,19 +167,19 @@ current = do
   c <- gets currentBlock
   blks <- gets blocks
   case Map.lookup c blks of
-    Just x -> return x
+    Just x  -> return x
     Nothing -> error $ "No such block: " ++ show c
 
 assign :: String -> Operand -> Codegen ()
 assign var x = do
   lcls <- gets symtab
-  modify $ \s -> s {symtab = [(var, x)] ++ lcls}
+  modify $ \s -> s {symtab = (var, x) : lcls}
 
 getvar :: String -> Codegen Operand
 getvar var = do
   syms <- gets symtab
   case lookup var syms of
-    Just x -> return x
+    Just x  -> return x
     Nothing -> error $ "Local variable not in scope: " ++ show var
 
 local :: Name -> Operand
@@ -199,25 +192,25 @@ externf :: Name -> Operand
 externf = ConstantOperand . C.GlobalReference integer
 
 add :: Operand -> Operand -> Codegen Operand
-add a b = instr $ FAdd NoFastMathFlags a b []
+add a b = instr $ Add False False a b []
 
 sub :: Operand -> Operand -> Codegen Operand
-sub a b = instr $ FSub NoFastMathFlags a b []
+sub a b = instr $ Sub False False a b []
 
 mul :: Operand -> Operand -> Codegen Operand
-mul a b = instr $ FMul NoFastMathFlags a b []
+mul a b = instr $ Mul False False a b []
 
 sdiv :: Operand -> Operand -> Codegen Operand
-sdiv a b = instr $ FDiv NoFastMathFlags a b []
+sdiv a b = instr $ SDiv False a b []
+
+srem :: Operand -> Operand -> Codegen Operand
+srem a b = instr $ SRem a b []
 
 icmp :: IP.IntegerPredicate -> Operand -> Operand -> Codegen Operand
 icmp cond a b = instr $ ICmp cond a b []
 
 cons :: C.Constant -> Operand
 cons = ConstantOperand
-
-uitofp :: Type -> Operand -> Codegen Operand
-uitofp ty a = instr $ UIToFP a ty []
 
 toArgs :: [Operand] -> [(Operand, [A.ParameterAttribute])]
 toArgs = map (\x -> (x, []))

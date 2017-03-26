@@ -5,7 +5,7 @@ import Text.Parsec.String (Parser)
 
 import qualified Text.Parsec.Token as Token
 
-import qualified Lexer as Lexer
+import qualified Lexer
 import Syntax
 
 integer :: Parser Expression
@@ -18,19 +18,6 @@ variable = do
   var <- Lexer.identifier
   return $ Variable var
 
-definition :: Parser Expression
-definition = do
-  Lexer.reserved "define"
-  (name:args) <- Lexer.parens (many1 Lexer.identifier)
-  body <- expression
-  return $ Definition name args body
-
-declaration :: Parser Expression
-declaration = do
-  Lexer.reserved "declare"
-  (name:args) <- Lexer.parens (many1 Lexer.identifier)
-  return $ Declaration name args
-
 call :: Parser Expression
 call = do
   name <- Lexer.identifier
@@ -38,9 +25,28 @@ call = do
   return $ Call name args
 
 expression :: Parser Expression
-expression =
-  try integer <|> try variable <|>
-  Lexer.parens (try definition <|> try declaration <|> call)
+expression = integer <|> variable <|> Lexer.parens call
+
+define :: Parser Toplevel
+define = do
+  Lexer.reserved "define"
+  (name:args) <- Lexer.parens (many1 Lexer.identifier)
+  body <- expression
+  return $ Define name args body
+
+declare :: Parser Toplevel
+declare = do
+  Lexer.reserved "declare"
+  (name:args) <- Lexer.parens (many1 Lexer.identifier)
+  return $ Declare name args
+
+definition :: Parser Toplevel
+definition = Lexer.parens (declare <|> define)
+
+command :: Parser Toplevel
+command = do
+  x <- expression
+  return $ Command x
 
 contents :: Parser a -> Parser a
 contents p = do
@@ -49,11 +55,8 @@ contents p = do
   eof
   return r
 
-toplevel :: Parser [Expression]
-toplevel = many expression
+program :: Parser Program
+program = many $ try definition <|> command
 
-parseExpression :: String -> Either ParseError Expression
-parseExpression s = parse (contents expression) "<stdin>" s
-
-parseToplevel :: String -> Either ParseError [Expression]
-parseToplevel s = parse (contents toplevel) "<stdin>" s
+parseProgram :: String -> Either ParseError Program
+parseProgram = parse (contents program) "<stdin>"
