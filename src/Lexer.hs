@@ -13,7 +13,22 @@ symbol = oneOf "!$%&*+-./:<=>?@^_~"
 lexer :: Token.TokenParser ()
 lexer = Token.makeTokenParser style
   where
-    names = ["define", "declare", "quote", "'", "."]
+    names =
+      [ "cons"
+      , "."
+      , "quote"
+      , "'"
+      , "quasiquote"
+      , "`"
+      , "unquote"
+      , ","
+      , "unquote-splicing"
+      , ",@"
+      , "let"
+      , "lambda"
+      , "define"
+      , "declare"
+      ]
     style =
       emptyDef
       { Token.commentStart = "#|"

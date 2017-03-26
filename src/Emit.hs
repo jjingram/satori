@@ -29,7 +29,7 @@ codegenTop (S.Define name args body) = define integer name fnargs bls
           var <- alloca integer
           _ <- store var (local (AST.Name a))
           assign a var
-        cgen body >>= ret
+        mapM cgen body >>= ret . last
 codegenTop (S.Declare name args) = declare integer name fnargs
   where
     fnargs = toSig args
@@ -43,8 +43,8 @@ codegenTop (S.Command expr) = define integer "main" [] blks
         cgen expr >>= ret
 
 cgen :: S.Expression -> Codegen AST.Operand
-cgen (S.Variable x) = getvar x >>= load
 cgen (S.Quote (S.Atom (S.Integer n))) = return $ cons $ C.Int 64 n
+cgen (S.Variable x) = getvar x >>= load
 cgen (S.Call fn args) = do
   largs <- mapM cgen args
   call (externf (AST.Name fn)) largs
