@@ -7,7 +7,6 @@ import LLVM.General.Module
 
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.IntegerPredicate as IP
 
 import Control.Monad.Except
 
@@ -43,12 +42,9 @@ codegenTop (S.Command expr) = define integer "main" [] blks
         _ <- setBlock entry'
         cgen expr >>= ret
 
-lt :: AST.Operand -> AST.Operand -> Codegen AST.Operand
-lt = icmp IP.ULT
-
 cgen :: S.Expression -> Codegen AST.Operand
 cgen (S.Variable x) = getvar x >>= load
-cgen (S.Number n) = return $ cons $ C.Int 64 n
+cgen (S.Quote (S.Atom (S.Integer n))) = return $ cons $ C.Int 64 n
 cgen (S.Call fn args) = do
   largs <- mapM cgen args
   call (externf (AST.Name fn)) largs

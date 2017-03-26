@@ -1,21 +1,21 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Codegen where
 
-import           Data.Function
-import           Data.List
-import qualified Data.Map                           as Map
+import Data.Function
+import Data.List
+import qualified Data.Map as Map
 
-import           Control.Monad.State
+import Control.Monad.State
 
-import           LLVM.General.AST
-import qualified LLVM.General.AST                   as AST
-import qualified LLVM.General.AST.Attribute         as A
+import LLVM.General.AST
+import qualified LLVM.General.AST as AST
+import qualified LLVM.General.AST.Attribute as A
 import qualified LLVM.General.AST.CallingConvention as CC
-import qualified LLVM.General.AST.Constant          as C
-import           LLVM.General.AST.Global
-import qualified LLVM.General.AST.IntegerPredicate  as IP
+import qualified LLVM.General.AST.Constant as C
+import LLVM.General.AST.Global
+import qualified LLVM.General.AST.IntegerPredicate as IP
 
 newtype LLVM a = LLVM
   { unLLVM :: State AST.Module a
@@ -69,17 +69,17 @@ type SymbolTable = [(String, Operand)]
 
 data CodegenState = CodegenState
   { currentBlock :: Name
-  , blocks       :: Map.Map Name BlockState
-  , symtab       :: SymbolTable
-  , blockCount   :: Int
-  , count        :: Word
-  , names        :: Names
+  , blocks :: Map.Map Name BlockState
+  , symtab :: SymbolTable
+  , blockCount :: Int
+  , count :: Word
+  , names :: Names
   } deriving (Show)
 
 data BlockState = BlockState
-  { idx   :: Int
+  { idx :: Int
   , stack :: [Named Instruction]
-  , term  :: Maybe (Named Terminator)
+  , term :: Maybe (Named Terminator)
   } deriving (Show)
 
 newtype Codegen a = Codegen
@@ -96,7 +96,7 @@ makeBlock :: (Name, BlockState) -> BasicBlock
 makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
   where
     maketerm (Just x) = x
-    maketerm Nothing  = error $ "Block has no terminator: " ++ show l
+    maketerm Nothing = error $ "Block has no terminator: " ++ show l
 
 entryBlockName :: String
 entryBlockName = "entry"
@@ -167,7 +167,7 @@ current = do
   c <- gets currentBlock
   blks <- gets blocks
   case Map.lookup c blks of
-    Just x  -> return x
+    Just x -> return x
     Nothing -> error $ "No such block: " ++ show c
 
 assign :: String -> Operand -> Codegen ()
@@ -179,7 +179,7 @@ getvar :: String -> Codegen Operand
 getvar var = do
   syms <- gets symtab
   case lookup var syms of
-    Just x  -> return x
+    Just x -> return x
     Nothing -> error $ "Local variable not in scope: " ++ show var
 
 local :: Name -> Operand
@@ -208,6 +208,9 @@ srem a b = instr $ SRem a b []
 
 icmp :: IP.IntegerPredicate -> Operand -> Operand -> Codegen Operand
 icmp cond a b = instr $ ICmp cond a b []
+
+lt :: Operand -> Operand -> Codegen Operand
+lt = icmp IP.ULT
 
 cons :: C.Constant -> Operand
 cons = ConstantOperand

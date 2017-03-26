@@ -14,8 +14,20 @@ data Toplevel
   deriving (Eq, Ord, Show)
 
 data Expression
-  = Number Integer
+  = Quote Sexp
   | Variable Name
   | Call Name
          [Expression]
+  deriving (Eq, Ord, Show)
+
+data Sexp
+  = Nil
+  | Atom Atom
+  | Cons Sexp
+         Sexp
+  deriving (Eq, Ord, Show)
+
+data Atom
+  = Integer Integer
+  | Symbol Name
   deriving (Eq, Ord, Show)
