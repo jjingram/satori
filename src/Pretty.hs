@@ -27,14 +27,15 @@ class Pretty p where
   ppr :: Int -> p -> Doc
 
 instance Pretty Name where
-  ppr _ x = text x
+  ppr _ = text
 
 instance Pretty TypeVariable where
   ppr _ (TV x) = text x
 
+-- TODO: pretty printing for product and sum types.
 instance Pretty Type where
   ppr p (TypeArrow a b) =
-    (parensIf (isArrow a) (ppr p a)) <+> text "->" <+> ppr p b
+    parensIf (isArrow a) (ppr p a) <+> text "->" <+> ppr p b
     where
       isArrow TypeArrow {} = True
       isArrow _ = False
@@ -48,7 +49,7 @@ instance Pretty Scheme where
     hcat (punctuate space (map (ppr p) ts)) <> text "." <+> ppr p t
 
 instance Pretty Constraint where
-  ppr p (a, b) = (ppr p a) <+> text " ~ " <+> (ppr p b)
+  ppr p (a, b) = ppr p a <+> text " ~ " <+> ppr p b
 
 instance Pretty [Constraint] where
   ppr p cs = vcat (punctuate space (map (ppr p) cs))

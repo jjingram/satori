@@ -167,13 +167,13 @@ quasisexp =
 
 unquoteSplicing :: Parser QuasiSexp
 unquoteSplicing =
-  try (char ',' >> char '@' >> fmap Expression expression) <|>
-  L.parens (L.reserved "unquote-splicing" >> fmap Expression expression)
+  try (char ',' >> char '@' >> fmap UnquoteSplicing expression) <|>
+  L.parens (L.reserved "unquote-splicing" >> fmap UnquoteSplicing expression)
 
 unquote :: Parser QuasiSexp
 unquote =
-  try (char ',' >> fmap Expression expression) <|>
-  L.parens (L.reserved "unquote" >> fmap Expression expression)
+  try (char ',' >> fmap Unquote expression) <|>
+  L.parens (L.reserved "unquote" >> fmap Unquote expression)
 
 quasiquote :: Parser Expression
 quasiquote =

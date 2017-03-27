@@ -8,6 +8,7 @@ module Infer
   , Subst(..)
   , inferTop
   , constraintsExpr
+  , ops
   ) where
 
 import Curry
@@ -47,6 +48,7 @@ class Substitutable a where
   apply :: Subst -> a -> a
   ftv :: a -> Set.Set TypeVariable
 
+-- TODO: implement for TypeProduct and TypeSum
 instance Substitutable Type where
   apply _ (TypeSymbol a) = TypeSymbol a
   apply (Subst s) t@(TypeVariable a) = Map.findWithDefault t a s
@@ -83,6 +85,7 @@ data TypeError
   | Ambigious [Constraint]
   | UnificationMismatch [Type]
                         [Type]
+  | MalformedPattern QSexp
 
 runInfer
   :: Environment
@@ -146,24 +149,28 @@ generalize env t = Forall as t
   where
     as = Set.toList $ ftv t `Set.difference` ftv env
 
-ops :: Syntax.Op -> Type
-ops Add = i64 `TypeArrow` (i64 `TypeArrow` i64)
-ops Mul = i64 `TypeArrow` (i64 `TypeArrow` i64)
-ops Sub = i64 `TypeArrow` (i64 `TypeArrow` i64)
-ops SDiv = i64 `TypeArrow` (i64 `TypeArrow` i64)
-ops SRem = i64 `TypeArrow` (i64 `TypeArrow` i64)
-ops ILT = i64 `TypeArrow` (i64 `TypeArrow` i1)
+ops :: Map.Map Syntax.Op (Name, Type)
+ops =
+  Map.fromList
+    [ (Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Mul, ("mul", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Sub, ("sub", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (SDiv, ("sdiv", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (SRem, ("srem", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (ILT, ("ilt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
+    ]
 
 infer :: Expr -> Infer (Type, [Constraint])
 infer expr =
   case expr of
     Q sexp -> return (qType sexp, [])
+    QQ sexp -> return (qqType sexp, [])
     Curry.BinOp op e1 e2 -> do
       (t1, c1) <- infer e1
       (t2, c2) <- infer e2
       tv <- fresh
       let u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
-          u2 = ops op
+          u2 = snd $ ops Map.! op
       return (tv, c1 ++ c2 ++ [(u1, u2)])
     Var x -> do
       t <- lookupEnvironment x
@@ -197,13 +204,14 @@ infer expr =
       return (TypeSum t2 t3, c1 ++ c2 ++ c3 ++ [(t1, i1)])
     Curry.Case e clauses -> do
       let (bindings, bodies) = unzip clauses
-      let (names, types) = unzip bindings
+      let (names, patterns) = unzip bindings
       -- TODO: write `memberOf` function to check that the clause types are part
       -- of the expression's sum type.
-      (t1, c1) <- infer e
-      let ts1 = map qqType types
+      (_, c1) <- infer e
+      patterns' <- mapM qqType patterns
       tvs <- replicateM (length names) fresh
-      let cs1 = zip tvs ts1
+      let (ts1, cs1) = unzip patterns'
+      let cs1' = zip tvs ts1
       xs <-
         mapM
           (\(x, e', tv) -> inEnvironment (x, Forall [] tv) (infer e'))
@@ -211,20 +219,36 @@ infer expr =
       let (ts2, cs2) = unzip xs
       let t2 = foldr1 TypeSum ts2
       let cs2' = concat cs2
-      return (t2, c1 ++ cs1 ++ cs2')
+      return (t2, c1 ++ concat cs1 ++ cs1' ++ cs2')
 
 qType :: Sexp -> Type
 qType (Atom Nil) = unit
 qType (Atom (Integer _)) = i64
-qType (Atom (Symbol s)) = symbol s
+qType (Atom (Symbol s)) = TypeSymbol s
 qType (Cons car cdr) = TypeProduct (qType car) (qType cdr)
 
--- TODO: figure out how to represent unquote and unquote-splicing in terms of
--- types.
-qqType :: QSexp -> Type
-qqType (QAtom Nil) = unit
-qqType (QAtom (Symbol s)) = symbol s
-qqType (QCons car cdr) = TypeProduct (qqType car) (qqType cdr)
+qqType :: QSexp -> Infer (Type, [Constraint])
+qqType (QAtom Nil) = return (unit, [])
+qqType (QAtom (Integer _)) = return (i64, [])
+qqType (UQ _) = do
+  tv <- fresh
+  return (tv, [])
+qqType x@(UQS _) = do
+  tv <- fresh
+  return (tv, [])
+qqType (QAtom (Symbol s)) = return (TypeSymbol s, [])
+qqType (QCons (UQ _) cdr) = do
+  tv <- fresh
+  (t1, c1) <- qqType cdr
+  return $ (t1, c1 ++ [(tv, t1)])
+qqType (QCons (UQS _) cdr) = do
+  tv <- fresh
+  (t1, c1) <- qqType cdr
+  return $ (t1, c1 ++ [(tv, t1)])
+qqType (QCons car cdr) = do
+  (t1, c1) <- qqType car
+  (t2, c2) <- qqType cdr
+  return $ (TypeProduct t1 t2, c1 ++ c2)
 
 inferTop :: Environment -> [(String, Expr)] -> Either TypeError Environment
 inferTop env [] = Right env

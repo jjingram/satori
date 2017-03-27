@@ -23,7 +23,10 @@ library
                      , Environment
                      , Pretty
                      , Infer
+                     , Closure
                      , Lift
+                     , Codegen
+                     , Emit
   build-depends:       base
                      , transformers
                      , llvm-general

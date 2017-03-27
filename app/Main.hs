@@ -16,19 +16,30 @@ import System.Console.Repline
 import System.Environment
 import System.Exit
 
+import LLVM.General.AST as AST
+
+import Codegen
 import Curry
+import Emit
 import Environment
 import Infer
 import Lift
 import Parser
 import Pretty
+import Type
 
-newtype IState = IState
+data IState = IState
   { tyctx :: Environment.Environment
+  , tmctx :: AST.Module
   }
 
+initModule :: AST.Module
+initModule = emptyModule "satori"
+
 initState :: IState
-initState = IState Environment.empty
+initState = IState (Environment.empty `extends` ops') initModule
+  where
+    ops' = map (\(x, ty) -> (x, Forall [] ty)) (Map.elems ops)
 
 type Repl a = HaskelineT (StateT IState IO) a
 
@@ -47,11 +58,12 @@ exec update source = do
   let prog' = map curryTop prog
   tyctx' <- hoistError $ inferTop (tyctx st) (definitions prog')
   let prog'' = lambdaLiftProgram [] prog'
+  liftIO $ putStrLn (show prog'')
   let st' = st {tyctx = tyctx' `mappend` tyctx st}
   when update (put st')
 
 cmd :: String -> Repl ()
-cmd source = exec True source
+cmd = exec True
 
 browse :: [String] -> Repl ()
 browse _ = do

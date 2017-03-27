@@ -40,7 +40,8 @@ data QSexp
   = QAtom Atom
   | QCons QSexp
           QSexp
-  | Expr Expr
+  | UQ Expr
+  | UQS Expr
   deriving (Eq, Ord, Show)
 
 curryTop :: Syntax.Top -> Curry.Top
@@ -70,67 +71,38 @@ curry (Syntax.Case x clauses) =
 qq :: QuasiSexp -> QSexp
 qq (QuasiAtom x) = QAtom x
 qq (QuasiCons car cdr) = QCons (qq car) (qq cdr)
-qq (Expression e) = Expr $ curry e
+qq (UnquoteSplicing e) = UQS $ curry e
+qq (Unquote e) = UQ $ curry e
+
+definitions :: Curry.Program -> [(String, Expr)]
+definitions [] = []
+definitions (Def name expr:rest) = (name, expr) : definitions rest
+definitions (_:rest) = definitions rest
 
 without
   :: Eq a
   => [a] -> [a] -> [a]
 without = foldr (filter . (/=))
 
-fv :: Expr -> [Name]
-fv (Q _) = []
-fv (QQ x) = vars x
-fv (Curry.BinOp _ e1 e2) = fv e1 ++ fv e2
-fv (Var x) = [x]
-fv (Lam x e) = fv e `without` [x]
-fv (Curry.Let x e1 e2) = fv e1 ++ (fv e2 `without` [x])
-fv (Curry.If p tr fl) = fv p ++ fv tr ++ fv fl
-fv (App e1 e2) = fv e1 ++ fv e2
-fv (Fix e) = fv e
-fv (Curry.Case x clauses) = fv x ++ types' ++ bodies'
+free :: Expr -> [Name]
+free (Q _) = []
+free (QQ x) = vars x
+free (Curry.BinOp _ e1 e2) = free e1 ++ free e2
+free (Var x) = [x]
+free (Lam x e) = free e `without` [x]
+free (Curry.Let x e1 e2) = free e1 ++ (free e2 `without` [x])
+free (Curry.If p tr fl) = free p ++ free tr ++ free fl
+free (App e1 e2) = free e1 ++ free e2
+free (Fix e) = free e
+free (Curry.Case x clauses) = free x ++ types' ++ bodies'
   where
     (bindings, bodies) = unzip clauses
     (_, types) = unzip bindings
     types' = concatMap vars types
-    bodies' = concatMap fv bodies
+    bodies' = concatMap free bodies
 
 vars :: QSexp -> [Name]
 vars (QAtom _) = []
 vars (QCons car cdr) = vars car ++ vars cdr
-vars (Expr e) = fv e
-
-appliedTo :: Expr -> [Name] -> Expr
-appliedTo = foldl (\e a -> (App e $ Var a))
-
-convertQQ :: [Name] -> QSexp -> QSexp
-convertQQ env expr =
-  case expr of
-    x@(QAtom _) -> x
-    (QCons car cdr) -> QCons (convertQQ env car) (convertQQ env cdr)
-    (Expr e) -> Expr $ convert env e
-
-convert :: [Name] -> Expr -> Expr
-convert env expr =
-  case expr of
-    x@(Q _) -> x
-    (QQ x) -> QQ $ convertQQ env x
-    (Curry.BinOp op e1 e2) -> Curry.BinOp op (convert env e1) (convert env e2)
-    x@(Var _) -> x
-    (Lam x e) -> lam `appliedTo` args
-      where lam = foldr Lam e (args ++ [x])
-            args = fv e `without` (x : env)
-    (Curry.Let x e1 e2) -> Curry.Let x (convert env' e1) (convert env' e2)
-      where env' = x : env
-    (Curry.If t tr fl) ->
-      Curry.If (convert env t) (convert env tr) (convert env fl)
-    (App e1 e2) -> App (convert env e1) (convert env e2)
-    (Fix e) -> convert env e
-    (Curry.Case e clauses) -> Curry.Case (convert env e) clauses'
-      where (bindings, bodies) = unzip clauses
-            bodies' = map (convert env) bodies
-            clauses' = zip bindings bodies'
-
-definitions :: Curry.Program -> [(String, Expr)]
-definitions [] = []
-definitions (Def name expr:rest) = (name, expr) : definitions rest
-definitions (_:rest) = definitions rest
+vars (UQ e) = free e
+vars (UQS e) = free e

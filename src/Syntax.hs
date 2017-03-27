@@ -41,7 +41,8 @@ data QuasiSexp
   = QuasiAtom Atom
   | QuasiCons QuasiSexp
               QuasiSexp
-  | Expression Expression
+  | Unquote Expression
+  | UnquoteSplicing Expression
   deriving (Eq, Ord, Show)
 
 data Sexp

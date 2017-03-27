@@ -28,12 +28,3 @@ i64 = TypeSymbol "i64"
 
 i1 :: Type
 i1 = TypeSymbol "i1"
-
-symbol :: String -> Type
-symbol = TypeSymbol
-
-product :: Type -> Type -> Type
-product = TypeProduct
-
-sum :: Type -> Type -> Type
-sum = TypeSum
