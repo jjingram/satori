@@ -146,10 +146,25 @@ generalize env t = Forall as t
   where
     as = Set.toList $ ftv t `Set.difference` ftv env
 
+ops :: Syntax.Op -> Type
+ops Add = i64 `TypeArrow` (i64 `TypeArrow` i64)
+ops Mul = i64 `TypeArrow` (i64 `TypeArrow` i64)
+ops Sub = i64 `TypeArrow` (i64 `TypeArrow` i64)
+ops SDiv = i64 `TypeArrow` (i64 `TypeArrow` i64)
+ops SRem = i64 `TypeArrow` (i64 `TypeArrow` i64)
+ops ILT = i64 `TypeArrow` (i64 `TypeArrow` i1)
+
 infer :: Expr -> Infer (Type, [Constraint])
 infer expr =
   case expr of
-    Q (Atom (Integer _)) -> return (i64, [])
+    Q sexp -> return (qType sexp, [])
+    Curry.BinOp op e1 e2 -> do
+      (t1, c1) <- infer e1
+      (t2, c2) <- infer e2
+      tv <- fresh
+      let u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
+          u2 = ops op
+      return (tv, c1 ++ c2 ++ [(u1, u2)])
     Var x -> do
       t <- lookupEnvironment x
       return (t, [])
@@ -175,6 +190,41 @@ infer expr =
       (t1, c1) <- infer e1
       tv <- fresh
       return (tv, c1 ++ [(tv `TypeArrow` tv, t1)])
+    Curry.If cond tr fl -> do
+      (t1, c1) <- infer cond
+      (t2, c2) <- infer tr
+      (t3, c3) <- infer fl
+      return (TypeSum t2 t3, c1 ++ c2 ++ c3 ++ [(t1, i1)])
+    Curry.Case e clauses -> do
+      let (bindings, bodies) = unzip clauses
+      let (names, types) = unzip bindings
+      -- TODO: write `memberOf` function to check that the clause types are part
+      -- of the expression's sum type.
+      (t1, c1) <- infer e
+      let ts1 = map qqType types
+      tvs <- replicateM (length names) fresh
+      let cs1 = zip tvs ts1
+      xs <-
+        mapM
+          (\(x, e', tv) -> inEnvironment (x, Forall [] tv) (infer e'))
+          (zip3 names bodies tvs)
+      let (ts2, cs2) = unzip xs
+      let t2 = foldr1 TypeSum ts2
+      let cs2' = concat cs2
+      return (t2, c1 ++ cs1 ++ cs2')
+
+qType :: Sexp -> Type
+qType (Atom Nil) = unit
+qType (Atom (Integer _)) = i64
+qType (Atom (Symbol s)) = symbol s
+qType (Cons car cdr) = TypeProduct (qType car) (qType cdr)
+
+-- TODO: figure out how to represent unquote and unquote-splicing in terms of
+-- types.
+qqType :: QSexp -> Type
+qqType (QAtom Nil) = unit
+qqType (QAtom (Symbol s)) = symbol s
+qqType (QCons car cdr) = TypeProduct (qqType car) (qqType cdr)
 
 inferTop :: Environment -> [(String, Expr)] -> Either TypeError Environment
 inferTop env [] = Right env

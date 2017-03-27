@@ -11,30 +11,27 @@ import qualified LLVM.General.AST.Constant as C
 import Control.Monad.Except
 
 import Codegen
-import Curry
-import qualified Syntax as S
+import Lift
 
-toSig :: String -> (AST.Type, AST.Name)
-toSig x = (integer, AST.Name x)
+toSig :: [String] -> [(AST.Type, AST.Name)]
+toSig = map (\x -> (integer, AST.Name x))
 
-codegenTop :: Top -> LLVM ()
-codegenTop (Define name args body) = define integer name fnargs bls
+codegenTop :: Lift.Top -> LLVM ()
+codegenTop (Lift.Def name param body) = define integer name [] bls
   where
-    fnargs = toSig args
     bls =
       createBlocks $
       execCodegen $ do
         entry' <- addBlock entryBlockName
         _ <- setBlock entry'
-        forM_ args $ \a -> do
-          var <- alloca integer
-          _ <- store var (local (AST.Name a))
-          assign a var
+        var <- alloca integer
+        _ <- store var (local (AST.Name param))
+        assign param var
         cgen body >>= ret
-codegenTop (Declare name args) = declare integer name fnargs
+codegenTop (Lift.Decl name args) = declare integer name fnargs
   where
     fnargs = toSig args
-codegenTop (Command expr) = define integer "main" [] blks
+codegenTop (Lift.Cmd expr) = define integer "main" [] blks
   where
     blks =
       createBlocks $
@@ -45,18 +42,7 @@ codegenTop (Command expr) = define integer "main" [] blks
 
 cgen :: Expr -> Codegen AST.Operand
 cgen (Q (S.Atom (S.Integer n))) = return $ constant $ C.Int 64 n
-cgen (Lam x e) = define integer "lambda" x' bls
-  where
-    x' = toSig x
-    bls =
-      createBlocks $
-      execCodegen $ do
-        entry' <- addBlock entryBlockName
-        _ <- setBlock entry'
-        var <- alloca integer
-        _ <- store var (local (AST.Name x))
-        assign x var
-        cgen body >>= ret
+cgen (Lam _ _) = return mzero
 cgen (Var x) = getvar x >>= load
 cgen (App fn arg) = do
   cfn <- cgen fn
@@ -66,7 +52,7 @@ cgen (App fn arg) = do
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> Program -> IO AST.Module
+codegen :: AST.Module -> Lift.Program -> IO AST.Module
 codegen m fns =
   withContext $ \context ->
     liftError $

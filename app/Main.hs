@@ -19,6 +19,7 @@ import System.Exit
 import Curry
 import Environment
 import Infer
+import Lift
 import Parser
 import Pretty
 
@@ -39,17 +40,13 @@ hoistError (Left err) = do
   liftIO $ print err
   abort
 
-definitions :: Program -> [(String, Expr)]
-definitions [] = []
-definitions (Define name expr:rest) = (name, expr) : definitions rest
-definitions (_:rest) = definitions rest
-
 exec :: Bool -> String -> Repl ()
 exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
   tyctx' <- hoistError $ inferTop (tyctx st) (definitions prog')
+  let prog'' = lambdaLiftProgram [] prog'
   let st' = st {tyctx = tyctx' `mappend` tyctx st}
   when update (put st')
 
