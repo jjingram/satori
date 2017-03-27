@@ -114,7 +114,7 @@ call =
   TestCase
     (assertEqual
        "call"
-       (Right (Call "x" [Quote (Atom (Integer 1))]))
+       (Right (Call (Variable "x") [Quote (Atom (Integer 1))]))
        (P.parseExpression "(x 1)"))
 
 definitions = TestList [define, declare, program]
@@ -123,22 +123,22 @@ define =
   TestCase
     (assertEqual
        "define"
-       (Right [Define "foo" ["x"] [(Variable "x")]])
-       (P.parseProgram "(define (foo x) x)"))
+       (Right [Define "foo" ["x"] (Variable "x")])
+       (P.parseModule "<stdin>" "(define (foo x) x)"))
 
 declare =
   TestCase
     (assertEqual
        "declare"
        (Right [Declare "foo" ["x"]])
-       (P.parseProgram "(declare (foo x))"))
+       (P.parseModule "<stdin>" "(declare (foo x))"))
 
 program =
   TestCase
     (assertEqual
        "program"
        (Right
-          [ (Define "foo" ["x"] [(Variable "x")])
-          , (Command (Call "foo" [Quote (Atom (Integer 1))]))
+          [ Define "foo" ["x"] (Variable "x")
+          , Command (Call (Variable "foo") [Quote (Atom (Integer 1))])
           ])
-       (P.parseProgram "(define (foo x) x) (foo 1)"))
+       (P.parseModule "<stdin>" "(define (foo x) x) (foo 1)"))

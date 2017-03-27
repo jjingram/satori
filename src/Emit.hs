@@ -11,13 +11,14 @@ import qualified LLVM.General.AST.Constant as C
 import Control.Monad.Except
 
 import Codegen
+import Curry
 import qualified Syntax as S
 
-toSig :: [String] -> [(AST.Type, AST.Name)]
-toSig = map (\x -> (integer, AST.Name x))
+toSig :: String -> (AST.Type, AST.Name)
+toSig x = (integer, AST.Name x)
 
-codegenTop :: S.Toplevel -> LLVM ()
-codegenTop (S.Define name args body) = define integer name fnargs bls
+codegenTop :: Top -> LLVM ()
+codegenTop (Define name args body) = define integer name fnargs bls
   where
     fnargs = toSig args
     bls =
@@ -29,11 +30,11 @@ codegenTop (S.Define name args body) = define integer name fnargs bls
           var <- alloca integer
           _ <- store var (local (AST.Name a))
           assign a var
-        mapM cgen body >>= ret . last
-codegenTop (S.Declare name args) = declare integer name fnargs
+        cgen body >>= ret
+codegenTop (Declare name args) = declare integer name fnargs
   where
     fnargs = toSig args
-codegenTop (S.Command expr) = define integer "main" [] blks
+codegenTop (Command expr) = define integer "main" [] blks
   where
     blks =
       createBlocks $
@@ -42,17 +43,30 @@ codegenTop (S.Command expr) = define integer "main" [] blks
         _ <- setBlock entry'
         cgen expr >>= ret
 
-cgen :: S.Expression -> Codegen AST.Operand
-cgen (S.Quote (S.Atom (S.Integer n))) = return $ cons $ C.Int 64 n
-cgen (S.Variable x) = getvar x >>= load
-cgen (S.Call fn args) = do
-  largs <- mapM cgen args
-  call (externf (AST.Name fn)) largs
+cgen :: Expr -> Codegen AST.Operand
+cgen (Q (S.Atom (S.Integer n))) = return $ constant $ C.Int 64 n
+cgen (Lam x e) = define integer "lambda" x' bls
+  where
+    x' = toSig x
+    bls =
+      createBlocks $
+      execCodegen $ do
+        entry' <- addBlock entryBlockName
+        _ <- setBlock entry'
+        var <- alloca integer
+        _ <- store var (local (AST.Name x))
+        assign x var
+        cgen body >>= ret
+cgen (Var x) = getvar x >>= load
+cgen (App fn arg) = do
+  cfn <- cgen fn
+  carg <- cgen arg
+  call cfn carg
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> S.Program -> IO AST.Module
+codegen :: AST.Module -> Program -> IO AST.Module
 codegen m fns =
   withContext $ \context ->
     liftError $

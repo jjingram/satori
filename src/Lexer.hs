@@ -29,6 +29,7 @@ lexer = Token.makeTokenParser style
       , "define"
       , "declare"
       ]
+    ops = ["add", "sub", "mul", "sdiv", "srem", "ilt"]
     style =
       emptyDef
       { Token.commentStart = "#|"
@@ -38,6 +39,7 @@ lexer = Token.makeTokenParser style
       , Token.identStart = letter <|> symbol
       , Token.identLetter = letter <|> symbol <|> digit
       , Token.reservedNames = names
+      , Token.reservedOpNames = ops
       , Token.caseSensitive = True
       }
 
@@ -52,3 +54,6 @@ parens = Token.parens lexer
 
 reserved :: String -> Parser ()
 reserved = Token.reserved lexer
+
+reservedOp :: String -> Parser ()
+reservedOp = Token.reservedOp lexer

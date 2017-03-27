@@ -2,14 +2,12 @@ module Syntax where
 
 type Name = String
 
-type Program = [Toplevel]
+type Program = [Top]
 
-type Body = [Expression]
-
-data Toplevel
+data Top
   = Define Name
            [Name]
-           Body
+           Expression
   | Declare Name
             [Name]
   | Command Expression
@@ -22,18 +20,21 @@ type Bindings = [Binding]
 data Expression
   = Quote Sexp
   | Quasiquote QuasiSexp
+  | BinOp Op
+          Expression
+          Expression
   | Variable Name
   | Lambda [Name]
-           Body
+           Expression
   | Let Bindings
-        Body
+        Expression
   | If Expression
        Expression
        Expression
-  | Call Name
+  | Call Expression
          [Expression]
   | Case Expression
-         [(QuasiSexp, Expression)]
+         [((Name, QuasiSexp), Expression)]
   deriving (Eq, Ord, Show)
 
 data QuasiSexp
@@ -53,4 +54,13 @@ data Atom
   = Nil
   | Integer Integer
   | Symbol Name
+  deriving (Eq, Ord, Show)
+
+data Op
+  = Add
+  | Sub
+  | Mul
+  | SDiv
+  | SRem
+  | ILT
   deriving (Eq, Ord, Show)

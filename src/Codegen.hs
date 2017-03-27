@@ -209,17 +209,14 @@ srem a b = instr $ SRem a b []
 icmp :: IP.IntegerPredicate -> Operand -> Operand -> Codegen Operand
 icmp cond a b = instr $ ICmp cond a b []
 
-lt :: Operand -> Operand -> Codegen Operand
-lt = icmp IP.ULT
+ilt :: Operand -> Operand -> Codegen Operand
+ilt = icmp IP.ULT
 
-cons :: C.Constant -> Operand
-cons = ConstantOperand
+constant :: C.Constant -> Operand
+constant = ConstantOperand
 
-toArgs :: [Operand] -> [(Operand, [A.ParameterAttribute])]
-toArgs = map (\x -> (x, []))
-
-call :: Operand -> [Operand] -> Codegen Operand
-call fn args = instr $ Call Nothing CC.C [] (Right fn) (toArgs args) [] []
+call :: Operand -> Operand -> Codegen Operand
+call fn arg = instr $ Call Nothing CC.C [] (Right fn) [(arg, [])] [] []
 
 alloca :: Type -> Codegen Operand
 alloca ty = instr $ Alloca ty Nothing 0 []
