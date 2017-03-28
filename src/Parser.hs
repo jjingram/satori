@@ -105,6 +105,7 @@ binding =
 
 let' :: Parser (Expression Id)
 let' = do
+  L.reserved "let"
   bindings <- L.parens (many1 binding)
   body <- expression
   return $ Let bindings body
@@ -144,8 +145,9 @@ expression :: Parser (Expression Id)
 expression =
   integer <|> try quote <|> try quasiquote <|> try binop <|> try variable <|>
   try lambda <|>
+  try let' <|>
   try if' <|>
-  try call
+  call
 
 quasiatom :: Parser (Quasisexp Id)
 quasiatom = fmap Quasiatom (fmap Integer L.integer <|> symbol)

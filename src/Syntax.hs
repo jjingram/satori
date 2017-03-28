@@ -2,6 +2,8 @@ module Syntax where
 
 import Text.Parsec.Pos
 
+import Type
+
 type Name = String
 
 type Id = (Name, SourcePos)
@@ -10,19 +12,19 @@ type Env = [Name]
 
 data Core
   = Name Name
-  | Id (Name, SourcePos)
-  | Ref (Name, Int, SourcePos)
-  | Closure (Name, Env, SourcePos)
+  | Id (Name, Type, SourcePos)
+  | Ref (Name, Type, Int, SourcePos)
+  | Closure (Name, Type, Env, SourcePos)
   deriving (Eq, Ord, Show)
 
-coreId :: Id -> Core
-coreId (name, pos) = Id (name, pos)
+coreId :: Id -> Type -> Core
+coreId (name, pos) ty = Id (name, ty, pos)
 
-ref :: Id -> Int -> Core
-ref (name, pos) idx = Ref (name, idx, pos)
+ref :: Id -> Type -> Int -> Core
+ref (name, pos) ty idx = Ref (name, ty, idx, pos)
 
-closure :: Id -> Env -> Core
-closure (name, pos) env = Closure (name, env, pos)
+closure :: Id -> Type -> Env -> Core
+closure (name, pos) ty env = Closure (name, ty, env, pos)
 
 type Program a = [Top a]
 

@@ -23,6 +23,7 @@ library
                      , Environment
                      , Pretty
                      , Infer
+                     , Substitute
                      , Closure
                      , Lift
                      , Codegen

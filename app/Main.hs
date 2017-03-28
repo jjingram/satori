@@ -8,6 +8,7 @@ module Main where
 import Data.List (isPrefixOf, foldl')
 import qualified Data.Map as Map
 
+import Control.Arrow (second)
 import Control.Monad
 import Control.Monad.State.Strict
 import Control.Monad.Trans
@@ -26,12 +27,13 @@ import Infer
 import Lift
 import Parser
 import Pretty
+import Substitute
 import Type
 
 data IState = IState
   { tyctx :: Environment.Environment
   , tmctx :: AST.Module
-  , count :: Int
+  , count :: Integer
   }
 
 initModule :: AST.Module
@@ -40,7 +42,7 @@ initModule = emptyModule "satori"
 initState :: IState
 initState = IState (Environment.empty `extends` ops') initModule 0
   where
-    ops' = map (Control.Arrow.second (Forall [])) (Map.elems ops)
+    ops' = map (second (Forall [])) (Map.elems ops)
 
 type Repl a = HaskelineT (StateT IState IO) a
 
@@ -58,12 +60,11 @@ exec update source = do
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
   tyctx' <- hoistError $ inferTop (tyctx st) (definitions prog')
-  -- 1. Replace variables with their values
-  -- 2. If a definition isn't generic then convert to a Core program and
-  -- compile, else go to next definition
-  let (prog'', count') = lambdaLiftProgram (count st) [] prog'
-  tmctx' <- liftIO $ codegen (tmctx st) prog''
-  let st' = st {tyctx = tyctx' `mappend` tyctx st, count = count'}
+  liftIO $ putStrLn $ show tyctx'
+  let prog'' = substitute (Map.fromList (definitions prog')) prog'
+  let mono = filter (not isPolymorphic) prog''
+  let (prog''', count') = lambdaLiftProgram (Main.count st) [] prog''
+  let st' = st {tyctx = tyctx' `mappend` tyctx st, Main.count = count'}
   when update (put st')
 
 cmd :: String -> Repl ()

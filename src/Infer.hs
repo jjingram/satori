@@ -7,6 +7,7 @@ module Infer
   , TypeError(..)
   , Subst(..)
   , inferTop
+  , inferExpr
   , constraintsExpr
   , ops
   ) where
@@ -252,13 +253,14 @@ infer'' (Quasicons car cdr) = do
   (t2, c2) <- infer'' cdr
   return (TypeProduct t1 t2, c1 ++ c2)
 
-inferTop :: Environment -> [(Id, Expression Id)] -> Either TypeError Environment
+inferTop :: Environment
+         -> [(Name, Expression Id)]
+         -> Either TypeError Environment
 inferTop env [] = Right env
 inferTop env ((x, ex):xs) =
-  let (name, _) = x
-  in case inferExpr env ex of
-       Left err -> Left err
-       Right ty -> inferTop (extend env (name, ty)) xs
+  case inferExpr env ex of
+    Left err -> Left err
+    Right ty -> inferTop (extend env (x, ty)) xs
 
 normalize :: Scheme -> Scheme
 normalize (Forall _ body) = Forall (map snd ord) (normtype body)

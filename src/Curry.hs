@@ -34,9 +34,11 @@ qq (Quasicons car cdr) = Quasicons (qq car) (qq cdr)
 qq (UnquoteSplicing e) = UnquoteSplicing $ curry e
 qq (Unquote e) = Unquote $ curry e
 
-definitions :: Program Id -> [(Id, Expression Id)]
+definitions :: Program Id -> [(Name, Expression Id)]
 definitions [] = []
-definitions (Define id [] expr:rest) = (id, expr) : definitions rest
+definitions (Define name [] expr:rest) = (name', expr) : definitions rest
+  where
+    (name', _) = name
 definitions (_:rest) = definitions rest
 
 without
