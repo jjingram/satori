@@ -7,13 +7,12 @@ module Infer
   , TypeError(..)
   , Subst(..)
   , inferTop
-  , constraintsExpr
+  , constraintsTop
   , ops
   ) where
 
 import Core
 import Environment
-import Pretty
 import Syntax
 import Type
 
@@ -103,9 +102,7 @@ inferExpr env ex =
         Left err -> Left err
         Right subst -> Right $ closeOver $ apply subst ty
 
-substituteType :: Map.Map TypeVariable Type
-               -> Core.Expression Typed
-               -> Core.Expression Typed
+substituteType :: Subst -> Core.Expression Typed -> Core.Expression Typed
 substituteType sub expr =
   case expr of
     Core.Quote sexp -> Core.Quote sexp
@@ -122,27 +119,15 @@ substituteType sub expr =
     Core.BinOp op e1 e2 ->
       Core.BinOp op (substituteType sub e1) (substituteType sub e2)
     Core.Variable (name, ty) r -> Core.Variable (name, ty') r
-      where ty' =
-              case ty of
-                (TypeVariable x) -> fromMaybe ty (Map.lookup x sub)
-                _ -> ty
+      where ty' = apply sub ty
     Core.Lambda x t f e -> Core.Lambda x' t' f (substituteType sub e)
       where (name, ty) = head x
-            ty' =
-              case ty of
-                (TypeVariable x_) -> fromMaybe ty (Map.lookup x_ sub)
-                _ -> ty
+            ty' = apply sub ty
             x' = [(name, ty')]
-            t' =
-              case t of
-                (TypeVariable x_) -> fromMaybe t (Map.lookup x_ sub)
-                _ -> t
+            t' = apply sub t
     Core.Let x e -> Core.Let x' (substituteType sub e)
       where ((name, ty), e1) = head x
-            ty' =
-              case ty of
-                (TypeVariable x_) -> fromMaybe ty (Map.lookup x_ sub)
-                _ -> ty
+            ty' = apply sub ty
             x' = [((name, ty'), e1)]
     Core.If cond tr fl ->
       Core.If
@@ -156,12 +141,20 @@ substituteType sub expr =
             es' = map (substituteType sub) es
             clauses' = zip xs es'
 
-constraintsTop :: Environment -> Syntax.Program Name -> Core.Program Typed
+constraintsTop :: Environment
+               -> Syntax.Program Name
+               -> [Either TypeError (Core.Top Typed)]
+constraintsTop _ [] = []
 constraintsTop env (Syntax.Define x xs e:rest) =
   case constraintsExpr env e of
-    Left err -> error $ show err
+    Left err -> Left err : constraintsTop env rest
     Right (_, _, _, Forall _ t, e') ->
-      Core.Define (x, t) xs e' : constraintsTop env rest
+      Right (Core.Define (x, t) xs e') : constraintsTop env rest
+constraintsTop env (Syntax.Declare {}:rest) = constraintsTop env rest
+constraintsTop env (Syntax.Command expr:rest) =
+  case constraintsExpr env expr of
+    Left err -> Left err : constraintsTop env rest
+    Right (_, _, _, _, e') -> Right (Core.Command e') : constraintsTop env rest
 
 constraintsExpr
   :: Environment
@@ -173,9 +166,9 @@ constraintsExpr env ex =
     Right (ty, cs, ex') ->
       case runSolve cs of
         Left err -> Left err
-        Right subst@(Subst sub) -> Right (cs, subst, ty, sc, ex'')
+        Right subst -> Right (cs, subst, ty, sc, ex'')
           where sc = closeOver $ apply subst ty
-                ex'' = substituteType sub ex'
+                ex'' = substituteType subst ex'
 
 closeOver :: Type -> Scheme
 closeOver = normalize . generalize Environment.empty

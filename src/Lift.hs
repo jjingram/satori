@@ -40,7 +40,7 @@ lambdaLift (Variable x r) = return $ Variable x r
 lambdaLift (Lambda x t f e) = do
   name <- fresh
   e' <- lambdaLift e
-  let def = Define (name, t) x e'
+  let def = Define (name, t) [fst (head x)] e'
   tell [def]
   return $ Lambda x t f e'
 lambdaLift (Let b e2) = do

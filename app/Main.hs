@@ -66,9 +66,12 @@ exec update source = do
   let defs = definitions prog'
   tyctx' <- hoistError $ inferTop (tyctx st) defs
   let prog'' = substitute (Map.fromList defs) prog'
+  let tyctx'' = tyctx' `mappend` tyctx st
+  let core = constraintsTop tyctx'' prog''
+  liftIO $ print core
   --let mono = filter (not . isPolymorphic tyctx') prog''
   --let (prog''', count') = lambdaLiftProgram (Main.count st) [] prog''
-  let st' = st {tyctx = tyctx' `mappend` tyctx st}
+  let st' = st {tyctx = tyctx''}
   when update (put st')
 
 cmd :: String -> Repl ()

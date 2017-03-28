@@ -11,7 +11,6 @@ type Name = String
 
 isPolymorphic :: Environment -> Top Typed -> Bool
 isPolymorphic _ (Define (_, TypeVariable _) _ _) = True
-isPolymorphic _ (Define _ [(_, TypeVariable _)] _) = True
 isPolymorphic _ Define {} = False
 isPolymorphic _ (Declare _ _) = False
 isPolymorphic env (Command expr) =
