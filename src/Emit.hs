@@ -22,14 +22,13 @@ codegenTop :: Environment -> Core.Top Typed -> LLVM ()
 codegenTop env (Core.Define name params body) = define integer x [] bls
   where
     (x, _) = name
-    (xs, _) = unzip params
     bls =
       createBlocks $
       execCodegen $ do
         entry' <- addBlock entryBlockName
         _ <- setBlock entry'
         _ <-
-          forM xs $ \a -> do
+          forM params $ \a -> do
             var <- alloca integer
             _ <- store var (local (AST.Name a))
             assign a var

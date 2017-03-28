@@ -13,6 +13,7 @@ module Infer
 
 import Core
 import Environment
+import Pretty
 import Syntax
 import Type
 
@@ -23,6 +24,7 @@ import Control.Monad.State
 
 import Data.List (nub)
 import qualified Data.Map as Map
+import Data.Maybe
 import qualified Data.Set as Set
 
 type Infer a = (ReaderT Environment (StateT InferState (Except TypeError)) a)
@@ -101,6 +103,66 @@ inferExpr env ex =
         Left err -> Left err
         Right subst -> Right $ closeOver $ apply subst ty
 
+substituteType :: Map.Map TypeVariable Type
+               -> Core.Expression Typed
+               -> Core.Expression Typed
+substituteType sub expr =
+  case expr of
+    Core.Quote sexp -> Core.Quote sexp
+    Core.Quasiquote sexp -> Core.Quasiquote $ substituteType' sexp
+      where substituteType' :: Core.Quasisexp Typed -> Core.Quasisexp Typed
+            substituteType' sexp' =
+              case sexp' of
+                Core.Quasiatom x -> Core.Quasiatom x
+                Core.Quasicons car cdr ->
+                  Core.Quasicons (substituteType' car) (substituteType' cdr)
+                Core.Unquote x -> Core.Unquote $ substituteType sub x
+                Core.UnquoteSplicing x ->
+                  Core.UnquoteSplicing $ substituteType sub x
+    Core.BinOp op e1 e2 ->
+      Core.BinOp op (substituteType sub e1) (substituteType sub e2)
+    Core.Variable (name, ty) r -> Core.Variable (name, ty') r
+      where ty' =
+              case ty of
+                (TypeVariable x) -> fromMaybe ty (Map.lookup x sub)
+                _ -> ty
+    Core.Lambda x t f e -> Core.Lambda x' t' f (substituteType sub e)
+      where (name, ty) = head x
+            ty' =
+              case ty of
+                (TypeVariable x_) -> fromMaybe ty (Map.lookup x_ sub)
+                _ -> ty
+            x' = [(name, ty')]
+            t' =
+              case t of
+                (TypeVariable x_) -> fromMaybe t (Map.lookup x_ sub)
+                _ -> t
+    Core.Let x e -> Core.Let x' (substituteType sub e)
+      where ((name, ty), e1) = head x
+            ty' =
+              case ty of
+                (TypeVariable x_) -> fromMaybe ty (Map.lookup x_ sub)
+                _ -> ty
+            x' = [((name, ty'), e1)]
+    Core.If cond tr fl ->
+      Core.If
+        (substituteType sub cond)
+        (substituteType sub tr)
+        (substituteType sub fl)
+    Core.Call f args ->
+      Core.Call (substituteType sub f) (map (substituteType sub) args)
+    Core.Case e clauses -> Core.Case (substituteType sub e) clauses'
+      where (xs, es) = unzip clauses
+            es' = map (substituteType sub) es
+            clauses' = zip xs es'
+
+constraintsTop :: Environment -> Syntax.Program Name -> Core.Program Typed
+constraintsTop env (Syntax.Define x xs e:rest) =
+  case constraintsExpr env e of
+    Left err -> error $ show err
+    Right (_, _, _, Forall _ t, e') ->
+      Core.Define (x, t) xs e' : constraintsTop env rest
+
 constraintsExpr
   :: Environment
   -> Syntax.Expression Name
@@ -111,8 +173,9 @@ constraintsExpr env ex =
     Right (ty, cs, ex') ->
       case runSolve cs of
         Left err -> Left err
-        Right subst -> Right (cs, subst, ty, sc, ex')
+        Right subst@(Subst sub) -> Right (cs, subst, ty, sc, ex'')
           where sc = closeOver $ apply subst ty
+                ex'' = substituteType sub ex'
 
 closeOver :: Type -> Scheme
 closeOver = normalize . generalize Environment.empty

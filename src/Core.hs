@@ -13,7 +13,7 @@ type Program a = [Core.Top a]
 
 data Top a
   = Define a
-           [a]
+           [Name]
            (Core.Expression a)
   | Declare Name
             [Name]

@@ -63,9 +63,9 @@ exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
-  tyctx' <- hoistError $ inferTop (tyctx st) (definitions prog')
-  let core = substituteType prog'
-  let core' = substitute (Map.fromList (definitions' core)) core
+  let defs = definitions prog'
+  tyctx' <- hoistError $ inferTop (tyctx st) defs
+  let prog'' = substitute (Map.fromList defs) prog'
   --let mono = filter (not . isPolymorphic tyctx') prog''
   --let (prog''', count') = lambdaLiftProgram (Main.count st) [] prog''
   let st' = st {tyctx = tyctx' `mappend` tyctx st}
