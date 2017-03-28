@@ -6,88 +6,42 @@ import Data.Maybe
 import Curry
 import Syntax
 
-type Program = [Closure.Top]
-
-type Env = [Name]
-
-data Top
-  = Def Name
-        Name
-        Closure.Expr
-  | Decl Name
-         [Name]
-  | Cmd Closure.Expr
-  deriving (Eq, Ord, Show)
-
-data Expr
-  = Q Sexp
-  | QQ Closure.QSexp
-  | BinOp Op
-          Closure.Expr
-          Closure.Expr
-  | Var Name
-  | Ref Int
-  | Let Name
-        Closure.Expr
-        Closure.Expr
-  | If Closure.Expr
-       Closure.Expr
-       Closure.Expr
-  | App Closure.Expr
-        Closure.Expr
-  | Fix Closure.Expr
-  | Case Closure.Expr
-         [((Name, Closure.QSexp), Closure.Expr)]
-  | Closure Name
-            Closure.Expr
-            Env
-  deriving (Eq, Ord, Show)
-
-data QSexp
-  = QAtom Atom
-  | QCons Closure.QSexp
-          Closure.QSexp
-  | UQ Closure.Expr
-  | UQS Closure.Expr
-  deriving (Eq, Ord, Show)
-
-convertQQ :: [Name] -> [Name] -> Curry.QSexp -> Closure.QSexp
-convertQQ env fvs expr =
+convert' :: [Name] -> [Name] -> Quasisexp Id -> Quasisexp Core
+convert' env fvs expr =
   case expr of
-    (Curry.QAtom x) -> Closure.QAtom x
-    (Curry.QCons car cdr) ->
-      Closure.QCons (convertQQ env fvs car) (convertQQ env fvs cdr)
-    (Curry.UQ e) -> Closure.UQ $ convert env fvs e
-    (Curry.UQS e) -> Closure.UQS $ convert env fvs e
+    (Quasiatom x) -> Quasiatom x
+    (Quasicons car cdr) ->
+      Quasicons (convert' env fvs car) (convert' env fvs cdr)
+    (Unquote e) -> Unquote $ convert env fvs e
+    (UnquoteSplicing e) -> UnquoteSplicing $ convert env fvs e
 
-convert :: [Name] -> [Name] -> Curry.Expr -> Closure.Expr
+convert :: [Name] -> [Name] -> Expression Id -> Expression Core
 convert env fvs expr =
   case expr of
-    (Curry.Q x) -> Closure.Q x
-    (Curry.QQ x) -> Closure.QQ $ convertQQ env fvs x
-    (Curry.BinOp op e1 e2) ->
-      Closure.BinOp op (convert env fvs e1) (convert env fvs e2)
-    (Curry.Var x) ->
-      if x `elem` fvs
-        then Closure.Ref $ fromJust $ elemIndex x fvs
-        else Closure.Var x
-    (Lam x e) -> Closure x (convert env fvs' e) fvs'
-      where fvs' = sort $ nub $ free e `without` (x : env) ++ fvs
-    (Curry.Let x e1 e2) ->
-      Closure.Let x (convert env' fvs' e1) (convert env' fvs' e2)
-      where env' = x : env
-            fvs' = fvs `without` [x]
-    (Curry.If cond tr fl) ->
-      Closure.If
-        (convert env fvs cond)
-        (convert env fvs tr)
-        (convert env fvs fl)
-    (Curry.App e1 e2) -> Closure.App (convert env fvs e1) (convert env fvs e2)
-    (Curry.Fix e) -> Closure.Fix $ convert env fvs e
-    (Curry.Case e clauses) -> Closure.Case (convert env fvs e) clauses'
+    (Quote x) -> Quote x
+    (Quasiquote x) -> Quasiquote $ convert' env fvs x
+    (BinOp op e1 e2) -> BinOp op (convert env fvs e1) (convert env fvs e2)
+    (Variable x) ->
+      let (name, _) = x
+      in if name `elem` fvs
+           then Variable (ref x (fromJust (elemIndex name fvs)))
+           else Variable (coreId x)
+    (Lambda x e) -> Lambda [closure (head x) fvs'] (convert env fvs' e)
+      where (name, _) = head x
+            fvs' = sort $ nub $ free e `without` (name : env) ++ fvs
+    (Let b e2) ->
+      Let [((coreId x), convert env' fvs' e1)] (convert env' fvs' e2)
+      where (x, e1) = head b
+            (name, _) = x
+            env' = name : env
+            fvs' = fvs `without` [name]
+    (If cond tr fl) ->
+      If (convert env fvs cond) (convert env fvs tr) (convert env fvs fl)
+    (Call e1 e2) -> Call (convert env fvs e1) (map (convert env fvs) e2)
+    (Case e clauses) -> Case (convert env fvs e) clauses'
       where (bindings, bodies) = unzip clauses
             (names, types) = unzip bindings
-            types' = map (convertQQ env fvs) types
+            types' = map (convert' env fvs) types
             bindings' = zip names types'
             bodies' = map (convert env fvs) bodies
             clauses' = zip bindings' bodies'

@@ -11,7 +11,7 @@ import qualified Data.Map as Map
 import qualified Lexer as L
 import Syntax
 
-integer :: Parser Expression
+integer :: Parser (Expression Id)
 integer = do
   n <- L.integer
   return $ Quote $ Atom $ Integer n
@@ -41,7 +41,7 @@ list =
 sexp :: Parser Sexp
 sexp = try atom <|> try pair <|> list
 
-quote :: Parser Expression
+quote :: Parser (Expression Id)
 quote =
   try (char '\'' >> fmap Quote sexp) <|>
   L.parens (L.reserved "quote" >> fmap Quote sexp)
@@ -68,7 +68,7 @@ binop' :: Parser Op
 binop' =
   foldl (\parser op -> binop'' op <|> parser) parserZero (Map.keys binops)
 
-binop :: Parser Expression
+binop :: Parser (Expression Id)
 binop =
   L.parens $ do
     op <- binop'
@@ -76,33 +76,40 @@ binop =
     e2 <- expression
     return $ BinOp op e1 e2
 
-variable :: Parser Expression
+variable :: Parser (Expression Id)
 variable = do
+  pos <- getPosition
   var <- L.identifier
-  return $ Variable var
+  return $ Variable (var, pos)
 
-lambda :: Parser Expression
+lambda :: Parser (Expression Id)
 lambda =
   L.parens $ do
     L.reserved "lambda"
-    formals <- L.parens $ many L.identifier
+    formals <-
+      L.parens $
+      many1 $ do
+        pos <- getPosition
+        name <- L.identifier
+        return (name, pos)
     body <- expression
     return $ Lambda formals body
 
-binding :: Parser Binding
+binding :: Parser (Id, Expression Id)
 binding =
   L.parens $ do
+    pos <- getPosition
     var <- L.identifier
     init' <- expression
-    return (var, init')
+    return ((var, pos), init')
 
-let' :: Parser Expression
+let' :: Parser (Expression Id)
 let' = do
-  bindings <- L.parens (many binding)
+  bindings <- L.parens (many1 binding)
   body <- expression
   return $ Let bindings body
 
-if' :: Parser Expression
+if' :: Parser (Expression Id)
 if' =
   L.parens $ do
     L.reserved "if"
@@ -111,13 +118,13 @@ if' =
     alternate <- expression
     return $ If test consequent alternate
 
-call :: Parser Expression
+call :: Parser (Expression Id)
 call =
   L.parens $ do
     (operator:operands) <- many1 expression
     return $ Call operator operands
 
-case' :: Parser Expression
+case' :: Parser (Expression Id)
 case' =
   L.parens $ do
     expr <- expression
@@ -133,77 +140,82 @@ case' =
            return (bind, e))
     return $ Case expr clauses
 
-expression :: Parser Expression
+expression :: Parser (Expression Id)
 expression =
   integer <|> try quote <|> try quasiquote <|> try binop <|> try variable <|>
   try lambda <|>
   try if' <|>
   try call
 
-quasiatom :: Parser QuasiSexp
-quasiatom = fmap QuasiAtom (fmap Integer L.integer <|> symbol)
+quasiatom :: Parser (Quasisexp Id)
+quasiatom = fmap Quasiatom (fmap Integer L.integer <|> symbol)
 
-quasipair :: Parser QuasiSexp
+quasipair :: Parser (Quasisexp Id)
 quasipair =
   L.parens $ do
     car <- many1 quasisexp
     L.reserved "."
     cdr <- quasisexp
-    return $ foldr QuasiCons cdr car
+    return $ foldr Quasicons cdr car
 
-quasinil :: Parser QuasiSexp
-quasinil = return $ QuasiAtom Nil
+quasinil :: Parser (Quasisexp Id)
+quasinil = return $ Quasiatom Nil
 
-quasilist :: Parser QuasiSexp
+quasilist :: Parser (Quasisexp Id)
 quasilist =
   L.parens $ do
     lst <- many quasisexp
-    return $ foldr QuasiCons (QuasiAtom Nil) lst
+    return $ foldr Quasicons (Quasiatom Nil) lst
 
-quasisexp :: Parser QuasiSexp
+quasisexp :: Parser (Quasisexp Id)
 quasisexp =
   quasiatom <|> try unquote <|> try unquoteSplicing <|> try quasipair <|>
   quasilist
 
-unquoteSplicing :: Parser QuasiSexp
+unquoteSplicing :: Parser (Quasisexp Id)
 unquoteSplicing =
   try (char ',' >> char '@' >> fmap UnquoteSplicing expression) <|>
   L.parens (L.reserved "unquote-splicing" >> fmap UnquoteSplicing expression)
 
-unquote :: Parser QuasiSexp
+unquote :: Parser (Quasisexp Id)
 unquote =
   try (char ',' >> fmap Unquote expression) <|>
   L.parens (L.reserved "unquote" >> fmap Unquote expression)
 
-quasiquote :: Parser Expression
+quasiquote :: Parser (Expression Id)
 quasiquote =
   try (char '`' >> fmap Quasiquote quasisexp) <|>
   L.parens (L.reserved "quasiquote" >> fmap Quasiquote quasisexp)
 
-define :: Parser Top
+define :: Parser (Top Id)
 define =
   L.parens $ do
     L.reserved "define"
-    (name:formals) <- L.parens (many1 L.identifier)
+    (name:formals) <-
+      L.parens $
+      many1 $ do
+        pos <- getPosition
+        name <- L.identifier
+        return (name, pos)
     body <- expression
     return $ Define name formals body
 
-declare :: Parser Top
+declare :: Parser (Top Id)
 declare =
   L.parens $ do
     L.reserved "declare"
     (name:types) <- L.parens (many1 L.identifier)
     return $ Declare name types
 
-definition :: Parser Top
+definition :: Parser (Top Id)
 definition = try declare <|> define
 
-command :: Parser Top
+command :: Parser (Top Id)
 command = do
   cmd <- expression
   return $ Command cmd
 
-program :: Parser Program
+program :: Parser (Program Id)
 program = many $ try definition <|> command
 
 contents :: Parser a -> Parser a
@@ -213,8 +225,8 @@ contents p = do
   eof
   return r
 
-parseExpression :: String -> Either ParseError Expression
+parseExpression :: String -> Either ParseError (Expression Id)
 parseExpression = parse (contents expression) "<stdin>"
 
-parseModule :: FilePath -> String -> Either ParseError Program
+parseModule :: FilePath -> String -> Either ParseError (Program Id)
 parseModule = parse (contents program)

@@ -11,7 +11,6 @@ module Infer
   , ops
   ) where
 
-import Curry
 import Environment
 import Syntax
 import Type
@@ -85,7 +84,6 @@ data TypeError
   | Ambigious [Constraint]
   | UnificationMismatch [Type]
                         [Type]
-  | MalformedPattern QSexp
 
 runInfer
   :: Environment
@@ -93,7 +91,7 @@ runInfer
   -> Either TypeError (Type, [Constraint])
 runInfer env m = runExcept $ evalStateT (runReaderT m env) initInfer
 
-inferExpr :: Environment -> Expr -> Either TypeError Scheme
+inferExpr :: Environment -> Expression Id -> Either TypeError Scheme
 inferExpr env ex =
   case runInfer env (infer ex) of
     Left err -> Left err
@@ -102,9 +100,10 @@ inferExpr env ex =
         Left err -> Left err
         Right subst -> Right $ closeOver $ apply subst ty
 
-constraintsExpr :: Environment
-                -> Expr
-                -> Either TypeError ([Constraint], Subst, Type, Scheme)
+constraintsExpr
+  :: Environment
+  -> Expression Id
+  -> Either TypeError ([Constraint], Subst, Type, Scheme)
 constraintsExpr env ex =
   case runInfer env (infer ex) of
     Left err -> Left err
@@ -149,7 +148,7 @@ generalize env t = Forall as t
   where
     as = Set.toList $ ftv t `Set.difference` ftv env
 
-ops :: Map.Map Syntax.Op (Name, Type)
+ops :: Map.Map Op (Name, Type)
 ops =
   Map.fromList
     [ (Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
@@ -160,55 +159,58 @@ ops =
     , (ILT, ("ilt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
     ]
 
-infer :: Expr -> Infer (Type, [Constraint])
+infer :: Expression Id -> Infer (Type, [Constraint])
 infer expr =
   case expr of
-    Q sexp -> return (qType sexp, [])
-    QQ sexp -> return (qqType sexp, [])
-    Curry.BinOp op e1 e2 -> do
+    Quote sexp -> return (infer' sexp, [])
+    Quasiquote sexp -> do
+      (t, c) <- infer'' sexp
+      return (t, c)
+    BinOp op e1 e2 -> do
       (t1, c1) <- infer e1
       (t2, c2) <- infer e2
       tv <- fresh
       let u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
           u2 = snd $ ops Map.! op
       return (tv, c1 ++ c2 ++ [(u1, u2)])
-    Var x -> do
-      t <- lookupEnvironment x
+    Variable x -> do
+      let (name, _) = x
+      t <- lookupEnvironment name
       return (t, [])
-    Lam x e -> do
+    Lambda x e -> do
       tv <- fresh
-      (t, c) <- inEnvironment (x, Forall [] tv) (infer e)
+      let (name, _) = head x
+      (t, c) <- inEnvironment (name, Forall [] tv) (infer e)
       return (tv `TypeArrow` t, c)
-    App e1 e2 -> do
+    Call e1 e2 -> do
+      let e2' = head e2
       (t1, c1) <- infer e1
-      (t2, c2) <- infer e2
+      (t2, c2) <- infer e2'
       tv <- fresh
       return (tv, c1 ++ c2 ++ [(t1, t2 `TypeArrow` tv)])
-    Curry.Let x e1 e2 -> do
+    Let b e2 -> do
       env <- ask
+      let (x, e1) = head b
       (t1, c1) <- infer e1
       case runSolve c1 of
         Left err -> throwError err
         Right sub -> do
           let sc = generalize (apply sub env) (apply sub t1)
-          (t2, c2) <- inEnvironment (x, sc) $ local (apply sub) (infer e2)
+          let (name, _) = x
+          (t2, c2) <- inEnvironment (name, sc) $ local (apply sub) (infer e2)
           return (t2, c1 ++ c2)
-    Fix e1 -> do
-      (t1, c1) <- infer e1
-      tv <- fresh
-      return (tv, c1 ++ [(tv `TypeArrow` tv, t1)])
-    Curry.If cond tr fl -> do
+    If cond tr fl -> do
       (t1, c1) <- infer cond
       (t2, c2) <- infer tr
       (t3, c3) <- infer fl
       return (TypeSum t2 t3, c1 ++ c2 ++ c3 ++ [(t1, i1)])
-    Curry.Case e clauses -> do
+    Case e clauses -> do
       let (bindings, bodies) = unzip clauses
       let (names, patterns) = unzip bindings
       -- TODO: write `memberOf` function to check that the clause types are part
       -- of the expression's sum type.
       (_, c1) <- infer e
-      patterns' <- mapM qqType patterns
+      patterns' <- mapM infer'' patterns
       tvs <- replicateM (length names) fresh
       let (ts1, cs1) = unzip patterns'
       let cs1' = zip tvs ts1
@@ -221,41 +223,42 @@ infer expr =
       let cs2' = concat cs2
       return (t2, c1 ++ concat cs1 ++ cs1' ++ cs2')
 
-qType :: Sexp -> Type
-qType (Atom Nil) = unit
-qType (Atom (Integer _)) = i64
-qType (Atom (Symbol s)) = TypeSymbol s
-qType (Cons car cdr) = TypeProduct (qType car) (qType cdr)
+infer' :: Sexp -> Type
+infer' (Atom Nil) = unit
+infer' (Atom (Integer _)) = i64
+infer' (Atom (Symbol s)) = TypeSymbol s
+infer' (Cons car cdr) = TypeProduct (infer' car) (infer' cdr)
 
-qqType :: QSexp -> Infer (Type, [Constraint])
-qqType (QAtom Nil) = return (unit, [])
-qqType (QAtom (Integer _)) = return (i64, [])
-qqType (UQ _) = do
+infer'' :: Quasisexp Id -> Infer (Type, [Constraint])
+infer'' (Quasiatom Nil) = return (unit, [])
+infer'' (Quasiatom (Integer _)) = return (i64, [])
+infer'' (Unquote _) = do
   tv <- fresh
   return (tv, [])
-qqType x@(UQS _) = do
+infer'' (UnquoteSplicing _) = do
   tv <- fresh
   return (tv, [])
-qqType (QAtom (Symbol s)) = return (TypeSymbol s, [])
-qqType (QCons (UQ _) cdr) = do
+infer'' (Quasiatom (Symbol s)) = return (TypeSymbol s, [])
+infer'' (Quasicons (Unquote _) cdr) = do
   tv <- fresh
-  (t1, c1) <- qqType cdr
-  return $ (t1, c1 ++ [(tv, t1)])
-qqType (QCons (UQS _) cdr) = do
+  (t1, c1) <- infer'' cdr
+  return (t1, c1 ++ [(tv, t1)])
+infer'' (Quasicons (UnquoteSplicing _) cdr) = do
   tv <- fresh
-  (t1, c1) <- qqType cdr
-  return $ (t1, c1 ++ [(tv, t1)])
-qqType (QCons car cdr) = do
-  (t1, c1) <- qqType car
-  (t2, c2) <- qqType cdr
-  return $ (TypeProduct t1 t2, c1 ++ c2)
+  (t1, c1) <- infer'' cdr
+  return (t1, c1 ++ [(tv, t1)])
+infer'' (Quasicons car cdr) = do
+  (t1, c1) <- infer'' car
+  (t2, c2) <- infer'' cdr
+  return (TypeProduct t1 t2, c1 ++ c2)
 
-inferTop :: Environment -> [(String, Expr)] -> Either TypeError Environment
+inferTop :: Environment -> [(Id, Expression Id)] -> Either TypeError Environment
 inferTop env [] = Right env
-inferTop env ((name, ex):xs) =
-  case inferExpr env ex of
-    Left err -> Left err
-    Right ty -> inferTop (extend env (name, ty)) xs
+inferTop env ((x, ex):xs) =
+  let (name, _) = x
+  in case inferExpr env ex of
+       Left err -> Left err
+       Right ty -> inferTop (extend env (name, ty)) xs
 
 normalize :: Scheme -> Scheme
 normalize (Forall _ body) = Forall (map snd ord) (normtype body)

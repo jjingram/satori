@@ -1,48 +1,66 @@
 module Syntax where
 
+import Text.Parsec.Pos
+
 type Name = String
 
-type Program = [Top]
+type Id = (Name, SourcePos)
 
-data Top
-  = Define Name
-           [Name]
-           Expression
+type Env = [Name]
+
+data Core
+  = Name Name
+  | Id (Name, SourcePos)
+  | Ref (Name, Int, SourcePos)
+  | Closure (Name, Env, SourcePos)
+  deriving (Eq, Ord, Show)
+
+coreId :: Id -> Core
+coreId (name, pos) = Id (name, pos)
+
+ref :: Id -> Int -> Core
+ref (name, pos) idx = Ref (name, idx, pos)
+
+closure :: Id -> Env -> Core
+closure (name, pos) env = Closure (name, env, pos)
+
+type Program a = [Top a]
+
+data Top a
+  = Define a
+           [a]
+           (Expression a)
   | Declare Name
             [Name]
-  | Command Expression
+  | Command (Expression a)
   deriving (Eq, Ord, Show)
 
-type Binding = (Name, Expression)
-
-type Bindings = [Binding]
-
-data Expression
+data Expression a
   = Quote Sexp
-  | Quasiquote QuasiSexp
+  | Quasiquote (Quasisexp a)
   | BinOp Op
-          Expression
-          Expression
-  | Variable Name
-  | Lambda [Name]
-           Expression
-  | Let Bindings
-        Expression
-  | If Expression
-       Expression
-       Expression
-  | Call Expression
-         [Expression]
-  | Case Expression
-         [((Name, QuasiSexp), Expression)]
+          (Expression a)
+          (Expression a)
+  | Variable a
+  | Lambda [a]
+           (Expression a)
+  | Let [(a, Expression a)]
+        (Expression a)
+  | If (Expression a)
+       (Expression a)
+       (Expression a)
+  | Call (Expression a)
+         [Expression a]
+  | Case (Expression a)
+         [((Name, Quasisexp a), Expression a)]
   deriving (Eq, Ord, Show)
 
-data QuasiSexp
-  = QuasiAtom Atom
-  | QuasiCons QuasiSexp
-              QuasiSexp
-  | Unquote Expression
-  | UnquoteSplicing Expression
+data Quasisexp a
+  = Quasiatom Atom
+  | Quasicons (Quasisexp a)
+              (Quasisexp a)
+  | Unquote (Expression a)
+  | UnquoteSplicing (Expression a)
   deriving (Eq, Ord, Show)
 
 data Sexp

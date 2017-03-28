@@ -12,30 +12,31 @@ import Control.Monad.Except
 
 import Codegen
 import Environment
-import Lift
 import Syntax
 
 toSig :: [String] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (integer, AST.Name x))
 
-codegenTop :: Environment -> Lift.Top -> LLVM ()
-codegenTop env (Def name params body) = define integer name [] bls
+codegenTop :: Environment -> Top Id -> LLVM ()
+codegenTop env (Define name params body) = define integer x [] bls
   where
+    (x, _) = name
+    (xs, _) = unzip params
     bls =
       createBlocks $
       execCodegen $ do
         entry' <- addBlock entryBlockName
         _ <- setBlock entry'
         _ <-
-          forM params $ \a -> do
+          forM xs $ \a -> do
             var <- alloca integer
             _ <- store var (local (AST.Name a))
             assign a var
         cgen env body >>= ret
-codegenTop _ (Decl name args) = declare integer name fnargs
+codegenTop _ (Declare name args) = declare integer name fnargs
   where
     fnargs = toSig args
-codegenTop env (Cmd expr) = define integer "main" [] blks
+codegenTop env (Command expr) = define integer "main" [] blks
   where
     blks =
       createBlocks $
@@ -48,9 +49,9 @@ binops :: Map.Map Op (AST.Operand -> AST.Operand -> Codegen AST.Operand)
 binops =
   Map.fromList [(Add, add), (Sub, sub), (Mul, mul), (SDiv, sdiv), (ILT, srem)]
 
-cgen :: Environment -> Expr -> Codegen AST.Operand
-cgen _ (Q (Atom (Integer n))) = return $ constant $ C.Int 64 n
-cgen env (Lift.BinOp op a b) =
+cgen :: Environment -> Expression Id -> Codegen AST.Operand
+cgen _ (Quote (Atom (Integer n))) = return $ constant $ C.Int 64 n
+cgen env (BinOp op a b) =
   case Map.lookup op binops of
     Just f -> do
       ca <- cgen env a
@@ -58,16 +59,20 @@ cgen env (Lift.BinOp op a b) =
       f ca cb
     -- Should never be reached.
     Nothing -> error "No such operator"
-cgen _ (Var x) = getvar x >>= load
-cgen env (App fn arg) = do
+cgen _ (Variable x) = do
+  let (name, _) = x
+  x' <- getvar name
+  load x'
+cgen env (Call fn args) = do
   cfn <- cgen env fn
+  let arg = head args
   carg <- cgen env arg
   call cfn carg
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> Lift.Program -> Environment -> IO AST.Module
+codegen :: AST.Module -> Program Id -> Environment -> IO AST.Module
 codegen m fns env =
   withContext $ \context ->
     liftError $
