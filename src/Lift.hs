@@ -68,18 +68,18 @@ lambdaLift (Case e clauses) = do
   let clauses' = zip bindings' bodies'
   return $ Case e' clauses'
 
-lambdaLiftTop :: [Name] -> Top Id -> Program Core
-lambdaLiftTop globals (Define name [] body) =
-  defs ++ [Define (coreId name) [] body']
+lambdaLiftTop :: Integer -> [Name] -> Top Id -> (Program Core, Integer)
+lambdaLiftTop count globals (Define name [] body) =
+  (defs ++ [Define (coreId name) [] body'], count')
   where
-    (body', defs) =
-      flip evalState 0 . runWriterT . lambdaLift $ convert globals [] body
-lambdaLiftTop _ _ = []
+    ((body', defs), count') =
+      flip runState count . runWriterT . lambdaLift $ convert globals [] body
+lambdaLiftTop count _ _ = ([], count)
 
-lambdaLiftProgram :: [Name] -> Program Id -> Program Core
-lambdaLiftProgram _ [] = []
-lambdaLiftProgram globals (top@Define {}:rest) =
-  def ++ lambdaLiftProgram (name : globals) rest
+lambdaLiftProgram :: Integer -> [Name] -> Program Id -> (Program Core, Integer)
+lambdaLiftProgram count _ [] = ([], count)
+lambdaLiftProgram count globals (top@Define {}:rest) = (def ++ rest', count'')
   where
-    def@(Define (Name name) _ _:_) = lambdaLiftTop globals top
-lambdaLiftProgram globals (_:rest) = lambdaLiftProgram globals rest
+    (rest', count'') = lambdaLiftProgram count' (name : globals) rest
+    (def@(Define (Name name) _ _:_), count') = lambdaLiftTop count globals top
+lambdaLiftProgram count globals (_:rest) = lambdaLiftProgram count globals rest

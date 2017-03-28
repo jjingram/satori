@@ -31,15 +31,16 @@ import Type
 data IState = IState
   { tyctx :: Environment.Environment
   , tmctx :: AST.Module
+  , count :: Int
   }
 
 initModule :: AST.Module
 initModule = emptyModule "satori"
 
 initState :: IState
-initState = IState (Environment.empty `extends` ops') initModule
+initState = IState (Environment.empty `extends` ops') initModule 0
   where
-    ops' = map (\(x, ty) -> (x, Forall [] ty)) (Map.elems ops)
+    ops' = map (Control.Arrow.second (Forall [])) (Map.elems ops)
 
 type Repl a = HaskelineT (StateT IState IO) a
 
@@ -57,9 +58,12 @@ exec update source = do
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
   tyctx' <- hoistError $ inferTop (tyctx st) (definitions prog')
-  let prog'' = lambdaLiftProgram [] prog'
-  liftIO $ putStrLn (show prog'')
-  let st' = st {tyctx = tyctx' `mappend` tyctx st}
+  -- 1. Replace variables with their values
+  -- 2. If a definition isn't generic then convert to a Core program and
+  -- compile, else go to next definition
+  let (prog'', count') = lambdaLiftProgram (count st) [] prog'
+  tmctx' <- liftIO $ codegen (tmctx st) prog''
+  let st' = st {tyctx = tyctx' `mappend` tyctx st, count = count'}
   when update (put st')
 
 cmd :: String -> Repl ()
