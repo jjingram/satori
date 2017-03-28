@@ -140,6 +140,7 @@ substituteType sub expr =
       where (xs, es) = unzip clauses
             es' = map (substituteType sub) es
             clauses' = zip xs es'
+    Core.Fix e -> Core.Fix (substituteType sub e)
 
 constraintsTop :: Environment
                -> Syntax.Program Name
@@ -278,6 +279,10 @@ infer expr =
       let clauses' = zip bindings bodies'
       let t2 = foldr1 TypeSum ts2
       return (t2, c ++ concat cs2 ++ cs3, Core.Case e' clauses')
+    Syntax.Fix e -> do
+      (t, c, e') <- infer e
+      tv <- fresh
+      return (tv, c ++ [(tv `TypeArrow` tv, t)], Core.Fix e')
 
 inferQuote :: Sexp -> Type
 inferQuote (Atom Nil) = unit

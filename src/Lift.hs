@@ -63,14 +63,22 @@ lambdaLift (Case e clauses) = do
   bodies' <- mapM lambdaLift bodies
   let clauses' = zip bindings bodies'
   return $ Case e' clauses'
+lambdaLift (Fix e) = do
+  e' <- lambdaLift e
+  return $ Fix e'
 
 lambdaLiftTop :: Integer -> [Name] -> Top Typed -> (Program Typed, Integer)
-lambdaLiftTop count globals (Define name [] body) =
-  (defs ++ [Define name [] body'], count')
-  where
-    ((body', defs), count') =
-      flip runState count . runWriterT . lambdaLift $ convert globals [] body
-lambdaLiftTop count _ _ = ([], count)
+lambdaLiftTop count globals top =
+  case top of
+    (Define name [] body) -> (defs ++ [Define name [] body'], count')
+      where ((body', defs), count') =
+              flip runState count . runWriterT . lambdaLift $
+              convert globals [] body
+    (Command body) -> (defs ++ [Command body'], count')
+      where ((body', defs), count') =
+              flip runState count . runWriterT . lambdaLift $
+              convert globals [] body
+    _ -> ([top], count)
 
 lambdaLiftProgram :: Integer
                   -> [Name]
@@ -81,4 +89,11 @@ lambdaLiftProgram count globals (top@Define {}:rest) = (def ++ rest', count'')
   where
     (rest', count'') = lambdaLiftProgram count' (name : globals) rest
     (def@(Define (name, _) _ _:_), count') = lambdaLiftTop count globals top
-lambdaLiftProgram count globals (_:rest) = lambdaLiftProgram count globals rest
+lambdaLiftProgram count globals (top@Command {}:rest) = (cmd ++ rest', count'')
+  where
+    (rest', count'') = lambdaLiftProgram count' globals rest
+    (cmd, count') = lambdaLiftTop count globals top
+lambdaLiftProgram count globals (top@Declare {}:rest) = (decl ++ rest', count'')
+  where
+    (rest', count'') = lambdaLiftProgram count' globals rest
+    (decl, count') = lambdaLiftTop count globals top

@@ -18,12 +18,13 @@ library
   exposed-modules:     Lexer
                      , Syntax
                      , Parser
+                     , Fix
                      , Curry
                      , Type
                      , Environment
                      , Pretty
-                     , Infer
                      , Core
+                     , Infer
                      , Substitute
                      , Closure
                      , Lift

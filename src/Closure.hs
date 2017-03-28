@@ -3,45 +3,9 @@ module Closure where
 import Data.List
 
 import Core
-import Environment
 import Pretty ()
-import Type
 
 type Name = String
-
-isPolymorphic :: Environment -> Top Typed -> Bool
-isPolymorphic _ (Define (_, TypeVariable _) _ _) = True
-isPolymorphic _ Define {} = False
-isPolymorphic _ (Declare _ _) = False
-isPolymorphic env (Command expr) =
-  case expr of
-    Quote _ -> False
-    Quasiquote sexp -> isPolymorphic' sexp
-      where isPolymorphic' :: Quasisexp Typed -> Bool
-            isPolymorphic' (Quasiatom _) = False
-            isPolymorphic' (Quasicons car cdr) =
-              isPolymorphic' car && isPolymorphic' cdr
-            isPolymorphic' (Unquote x) = isPolymorphic env (Command x)
-            isPolymorphic' (UnquoteSplicing x) = isPolymorphic env (Command x)
-    BinOp _ e1 e2 ->
-      isPolymorphic env (Command e1) && isPolymorphic env (Command e2)
-    Variable (_, TypeVariable _) _ -> True
-    Variable (_, _) _ -> False
-    Lambda _ (TypeVariable _) _ _ -> True
-    Lambda [(_, TypeVariable _)] _ _ _ -> True
-    Lambda {} -> False
-    Let [((_, TypeVariable _), _)] _ -> True
-    Let _ _ -> False
-    If cond tr fl ->
-      isPolymorphic env (Command cond) &&
-      isPolymorphic env (Command tr) && isPolymorphic env (Command fl)
-    Call f args ->
-      isPolymorphic env (Command f) &&
-      foldl (\e x -> isPolymorphic env (Command x) && e) True args
-    Case e clauses ->
-      isPolymorphic env (Command e) &&
-      foldl (\acc x -> isPolymorphic env (Command x) && acc) True bodies
-      where (_, bodies) = unzip clauses
 
 convert' :: [Name] -> [Name] -> Quasisexp Typed -> Quasisexp Typed
 convert' env fvs expr =
@@ -78,6 +42,7 @@ convert env fvs expr =
       where (bindings, bodies) = unzip clauses
             bodies' = map (convert env fvs) bodies
             clauses' = zip bindings bodies'
+    (Fix e) -> Fix (convert env fvs e)
 
 without
   :: Eq a
@@ -101,6 +66,7 @@ free (Case x clauses) = (free x ++ bodies') `without` bindings'
     (bindings, bodies) = unzip clauses
     (bindings', _) = unzip bindings
     bodies' = concatMap free bodies
+free (Fix x) = free x
 
 vars :: Quasisexp Typed -> [Name]
 vars (Quasiatom _) = []

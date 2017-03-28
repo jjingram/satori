@@ -41,6 +41,7 @@ data Expression a
          [Core.Expression a]
   | Case (Core.Expression a)
          [((Name, Sexp), Core.Expression a)]
+  | Fix (Core.Expression a)
   deriving (Eq, Ord, Show)
 
 data Quasisexp a

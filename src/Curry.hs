@@ -26,6 +26,7 @@ curry (Syntax.Case x clauses) = Case (curry x) (zip (zip names types) bodies')
     (bindings, bodies) = unzip clauses
     (names, types) = unzip bindings
     bodies' = map curry bodies
+curry (Fix x) = Fix (curry x)
 
 qq :: Quasisexp Name -> Quasisexp Name
 qq x@(Quasiatom _) = x

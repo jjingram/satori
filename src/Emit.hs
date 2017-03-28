@@ -12,14 +12,13 @@ import Control.Monad.Except
 
 import Codegen
 import Core
-import Environment
 import Syntax
 
 toSig :: [String] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (integer, AST.Name x))
 
-codegenTop :: Environment -> Core.Top Typed -> LLVM ()
-codegenTop env (Core.Define name params body) = define integer x [] bls
+codegenTop :: Core.Top Typed -> LLVM ()
+codegenTop (Core.Define name params body) = define integer x [] bls
   where
     (x, _) = name
     bls =
@@ -32,48 +31,48 @@ codegenTop env (Core.Define name params body) = define integer x [] bls
             var <- alloca integer
             _ <- store var (local (AST.Name a))
             assign a var
-        cgen env body >>= ret
-codegenTop _ (Core.Declare name args) = declare integer name fnargs
+        cgen body >>= ret
+codegenTop (Core.Declare name args) = declare integer name fnargs
   where
     fnargs = toSig args
-codegenTop env (Core.Command expr) = define integer "main" [] blks
+codegenTop (Core.Command expr) = define integer "main" [] blks
   where
     blks =
       createBlocks $
       execCodegen $ do
         entry' <- addBlock entryBlockName
         _ <- setBlock entry'
-        cgen env expr >>= ret
+        cgen expr >>= ret
 
 binops :: Map.Map Op (AST.Operand -> AST.Operand -> Codegen AST.Operand)
 binops =
   Map.fromList [(Add, add), (Sub, sub), (Mul, mul), (SDiv, sdiv), (ILT, srem)]
 
-cgen :: Environment -> Core.Expression Typed -> Codegen AST.Operand
-cgen _ (Core.Quote (Atom (Integer n))) = return $ constant $ C.Int 64 n
-cgen env (Core.BinOp op a b) =
+cgen :: Core.Expression Typed -> Codegen AST.Operand
+cgen (Core.Quote (Atom (Integer n))) = return $ constant $ C.Int 64 n
+cgen (Core.BinOp op a b) =
   case Map.lookup op binops of
     Just f -> do
-      ca <- cgen env a
-      cb <- cgen env b
+      ca <- cgen a
+      cb <- cgen b
       f ca cb
     -- Should never be reached.
     Nothing -> error "No such operator"
-cgen _ (Core.Variable x r) = do
+cgen (Core.Variable x r) = do
   let (name, _) = x
   x' <- getvar name
   load x'
-cgen env (Core.Call fn args) = do
-  cfn <- cgen env fn
+cgen (Core.Call fn args) = do
+  cfn <- cgen fn
   let arg = head args
-  carg <- cgen env arg
+  carg <- cgen arg
   call cfn carg
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> Core.Program Typed -> Environment -> IO AST.Module
-codegen m fns env =
+codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
+codegen m fns =
   withContext $ \context ->
     liftError $
     withModuleFromAST context newast $ \m' -> do
@@ -81,5 +80,5 @@ codegen m fns env =
       putStrLn llstr
       return newast
   where
-    modn = mapM (codegenTop env) fns
+    modn = mapM codegenTop fns
     newast = runLLVM m modn

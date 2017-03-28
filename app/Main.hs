@@ -5,13 +5,13 @@
 
 module Main where
 
-import Data.List (isPrefixOf, foldl')
+import Data.Either
+import Data.List (isPrefixOf)
 import qualified Data.Map as Map
 
 import Control.Arrow (second)
 import Control.Monad
 import Control.Monad.State.Strict
-import Control.Monad.Trans
 
 import System.Console.Repline
 import System.Environment
@@ -19,24 +19,22 @@ import System.Exit
 
 import LLVM.General.AST as AST
 
-import Closure
 import Codegen
 import Core
 import Curry
 import Emit
 import Environment
+import Fix
 import Infer
 import Lift
 import Parser
 import Pretty
 import Substitute
-import Syntax
 import Type
 
 data IState = IState
   { tyctx :: Environment.Environment
-  , tmctx :: Syntax.Program Syntax.Name
-  , ast :: AST.Module
+  , tmctx :: AST.Module
   , count :: Integer
   }
 
@@ -44,7 +42,7 @@ initModule :: AST.Module
 initModule = emptyModule "satori"
 
 initState :: IState
-initState = IState (Environment.empty `extends` ops') [] initModule 0
+initState = IState (Environment.empty `extends` ops') initModule 0
   where
     ops' = map (second (Forall [])) (Map.elems ops)
 
@@ -63,15 +61,15 @@ exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
-  let defs = definitions prog'
+  let fixed = fix' prog'
+  let defs = definitions fixed
   tyctx' <- hoistError $ inferTop (tyctx st) defs
   let prog'' = substitute (Map.fromList defs) prog'
   let tyctx'' = tyctx' `mappend` tyctx st
-  let core = constraintsTop tyctx'' prog''
-  liftIO $ print core
-  --let mono = filter (not . isPolymorphic tyctx') prog''
-  --let (prog''', count') = lambdaLiftProgram (Main.count st) [] prog''
-  let st' = st {tyctx = tyctx''}
+  let core = rights $ constraintsTop tyctx'' prog''
+  let (core', count') = lambdaLiftProgram (Main.count st) [] core
+  tmctx' <- liftIO $ codegen (tmctx st) core'
+  let st' = st {tyctx = tyctx'', Main.count = count', tmctx = tmctx'}
   when update (put st')
 
 cmd :: String -> Repl ()
