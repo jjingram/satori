@@ -2,11 +2,13 @@ module Substitute where
 
 import qualified Data.Map as Map
 
-import Syntax
+import Core
 
-type Subs = Map.Map Name (Expression Id)
+type Name = String
 
-substitute :: Subs -> Program Id -> Program Id
+type Subs = Map.Map Name (Expression Typed)
+
+substitute :: Subs -> Program Typed -> Program Typed
 substitute _ [] = []
 substitute subs (top:rest) =
   case top of
@@ -15,22 +17,21 @@ substitute subs (top:rest) =
     (Declare _ _) -> substitute subs rest
     (Command expr) -> Command (substitute' subs expr) : substitute subs rest
   where
-    substitute' :: Subs -> Expression Id -> Expression Id
+    substitute' :: Subs -> Expression Typed -> Expression Typed
     substitute' subs' expr =
       case expr of
         Quote sexp -> Quote sexp
         Quasiquote sexp -> Quasiquote (substitute'' subs' sexp)
         BinOp op e1 e2 -> BinOp op (substitute' subs' e1) (substitute' subs' e2)
-        Variable x -> Map.findWithDefault (Variable x) name subs'
-          where (name, _) = x
-        Lambda xs e -> Lambda xs (substitute' subs' e)
+        Variable x@(name, _) r -> Map.findWithDefault (Variable x r) name subs'
+        Lambda xs t f e -> Lambda xs t f (substitute' subs' e)
         Let b e2 ->
           if val
             then substitute' subs'' e2
             else Let [b'] (substitute' subs'' e2)
-          where ((name, pos), e1) = head b
+          where ((name, t), e1) = head b
                 e1' = substitute' subs' e1
-                b' = ((name, pos), e1')
+                b' = ((name, t), e1')
                 val = isval e1'
                 subs'' =
                   if val
@@ -44,7 +45,7 @@ substitute subs (top:rest) =
         Call e1 e2 -> Call (substitute' subs' e1) [substitute' subs' e2']
           where e2' = head e2
         Case e alts -> Case (substitute' subs' e) alts
-    substitute'' :: Subs -> Quasisexp Id -> Quasisexp Id
+    substitute'' :: Subs -> Quasisexp Typed -> Quasisexp Typed
     substitute'' subs' sexp =
       case sexp of
         Quasiatom x -> Quasiatom x
@@ -53,11 +54,11 @@ substitute subs (top:rest) =
         Unquote e -> Unquote (substitute' subs' e)
         UnquoteSplicing e -> UnquoteSplicing (substitute' subs' e)
 
-isval :: Expression Id -> Bool
+isval :: Expression Typed -> Bool
 isval Quote {} = True
 isval (Quasiquote sexp) = isval' sexp
   where
-    isval' :: Quasisexp Id -> Bool
+    isval' :: Quasisexp Typed -> Bool
     isval' Quasiatom {} = True
     isval' (Quasicons car cdr) = isval' car && isval' cdr
     isval' (Unquote x) = isval x

@@ -7,11 +7,11 @@ module Infer
   , TypeError(..)
   , Subst(..)
   , inferTop
-  , inferExpr
   , constraintsExpr
   , ops
   ) where
 
+import Core
 import Environment
 import Syntax
 import Type
@@ -88,30 +88,30 @@ data TypeError
 
 runInfer
   :: Environment
-  -> Infer (Type, [Constraint])
-  -> Either TypeError (Type, [Constraint])
+  -> Infer (Type, [Constraint], Core.Expression Typed)
+  -> Either TypeError (Type, [Constraint], Core.Expression Typed)
 runInfer env m = runExcept $ evalStateT (runReaderT m env) initInfer
 
-inferExpr :: Environment -> Expression Id -> Either TypeError Scheme
+inferExpr :: Environment -> Syntax.Expression Name -> Either TypeError Scheme
 inferExpr env ex =
   case runInfer env (infer ex) of
     Left err -> Left err
-    Right (ty, cs) ->
+    Right (ty, cs, _) ->
       case runSolve cs of
         Left err -> Left err
         Right subst -> Right $ closeOver $ apply subst ty
 
 constraintsExpr
   :: Environment
-  -> Expression Id
-  -> Either TypeError ([Constraint], Subst, Type, Scheme)
+  -> Syntax.Expression Name
+  -> Either TypeError ([Constraint], Subst, Type, Scheme, Core.Expression Typed)
 constraintsExpr env ex =
   case runInfer env (infer ex) of
     Left err -> Left err
-    Right (ty, cs) ->
+    Right (ty, cs, ex') ->
       case runSolve cs of
         Left err -> Left err
-        Right subst -> Right (cs, subst, ty, sc)
+        Right subst -> Right (cs, subst, ty, sc, ex')
           where sc = closeOver $ apply subst ty
 
 closeOver :: Type -> Scheme
@@ -160,101 +160,95 @@ ops =
     , (ILT, ("ilt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
     ]
 
-infer :: Expression Id -> Infer (Type, [Constraint])
+infer :: Syntax.Expression Name
+      -> Infer (Type, [Constraint], Core.Expression Typed)
 infer expr =
   case expr of
-    Quote sexp -> return (infer' sexp, [])
-    Quasiquote sexp -> do
-      (t, c) <- infer'' sexp
-      return (t, c)
-    BinOp op e1 e2 -> do
-      (t1, c1) <- infer e1
-      (t2, c2) <- infer e2
+    Syntax.Quote sexp -> return (inferQuote sexp, [], Core.Quote sexp)
+    Syntax.Quasiquote sexp -> do
+      (t, c, sexp') <- inferQuasiquote sexp
+      return (t, c, Core.Quasiquote sexp')
+    Syntax.BinOp op e1 e2 -> do
+      (t1, c1, e1') <- infer e1
+      (t2, c2, e2') <- infer e2
       tv <- fresh
       let u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
           u2 = snd $ ops Map.! op
-      return (tv, c1 ++ c2 ++ [(u1, u2)])
-    Variable x -> do
-      let (name, _) = x
-      t <- lookupEnvironment name
-      return (t, [])
-    Lambda x e -> do
+      return (tv, c1 ++ c2 ++ [(u1, u2)], Core.BinOp op e1' e2')
+    Syntax.Variable x -> do
+      t <- lookupEnvironment x
+      return (t, [], Core.Variable (x, t) Nothing)
+    Syntax.Lambda x e -> do
       tv <- fresh
-      let (name, _) = head x
-      (t, c) <- inEnvironment (name, Forall [] tv) (infer e)
-      return (tv `TypeArrow` t, c)
-    Call e1 e2 -> do
+      let name = head x
+      (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
+      return (tv `TypeArrow` t, c, Core.Lambda [(name, tv)] t [] e')
+    Syntax.Call e1 e2 -> do
       let e2' = head e2
-      (t1, c1) <- infer e1
-      (t2, c2) <- infer e2'
+      (t1, c1, e1') <- infer e1
+      (t2, c2, e2'') <- infer e2'
       tv <- fresh
-      return (tv, c1 ++ c2 ++ [(t1, t2 `TypeArrow` tv)])
-    Let b e2 -> do
+      return (tv, c1 ++ c2 ++ [(t1, t2 `TypeArrow` tv)], Core.Call e1' [e2''])
+    Syntax.Let b e2 -> do
       env <- ask
       let (x, e1) = head b
-      (t1, c1) <- infer e1
+      (t1, c1, e1') <- infer e1
       case runSolve c1 of
         Left err -> throwError err
         Right sub -> do
           let sc = generalize (apply sub env) (apply sub t1)
-          let (name, _) = x
-          (t2, c2) <- inEnvironment (name, sc) $ local (apply sub) (infer e2)
-          return (t2, c1 ++ c2)
-    If cond tr fl -> do
-      (t1, c1) <- infer cond
-      (t2, c2) <- infer tr
-      (t3, c3) <- infer fl
-      return (TypeSum t2 t3, c1 ++ c2 ++ c3 ++ [(t1, i1)])
-    Case e clauses -> do
+          (t2, c2, e2') <- inEnvironment (x, sc) $ local (apply sub) (infer e2)
+          return (t2, c1 ++ c2, Core.Let [((x, t1), e1')] e2')
+    Syntax.If cond tr fl -> do
+      (t1, c1, cond') <- infer cond
+      (t2, c2, tr') <- infer tr
+      (t3, c3, fl') <- infer fl
+      return
+        (TypeSum t2 t3, c1 ++ c2 ++ c3 ++ [(t1, i1)], Core.If cond' tr' fl')
+    Syntax.Case e clauses -> do
       let (bindings, bodies) = unzip clauses
       let (names, patterns) = unzip bindings
-      -- TODO: write `memberOf` function to check that the clause types are part
+      let ts1 = map inferQuote patterns
+      -- TODO: write `memberOf` function to check that the pattern types are part
       -- of the expression's sum type.
-      (_, c1) <- infer e
-      patterns' <- mapM infer'' patterns
+      (_, c, e') <- infer e
       tvs <- replicateM (length names) fresh
-      let (ts1, cs1) = unzip patterns'
-      let cs1' = zip tvs ts1
       xs <-
         mapM
-          (\(x, e', tv) -> inEnvironment (x, Forall [] tv) (infer e'))
+          (\(x, body, tv) -> inEnvironment (x, Forall [] tv) (infer body))
           (zip3 names bodies tvs)
-      let (ts2, cs2) = unzip xs
+      let (ts2, cs2, bodies') = unzip3 xs
+      let cs3 = zip ts1 ts2
+      let clauses' = zip bindings bodies'
       let t2 = foldr1 TypeSum ts2
-      let cs2' = concat cs2
-      return (t2, c1 ++ concat cs1 ++ cs1' ++ cs2')
+      return (t2, c ++ concat cs2 ++ cs3, Core.Case e' clauses')
 
-infer' :: Sexp -> Type
-infer' (Atom Nil) = unit
-infer' (Atom (Integer _)) = i64
-infer' (Atom (Symbol s)) = TypeSymbol s
-infer' (Cons car cdr) = TypeProduct (infer' car) (infer' cdr)
+inferQuote :: Sexp -> Type
+inferQuote (Atom Nil) = unit
+inferQuote (Atom (Integer _)) = i64
+inferQuote (Atom (Symbol s)) = TypeSymbol s
+inferQuote (Cons car cdr) = TypeProduct (inferQuote car) (inferQuote cdr)
 
-infer'' :: Quasisexp Id -> Infer (Type, [Constraint])
-infer'' (Quasiatom Nil) = return (unit, [])
-infer'' (Quasiatom (Integer _)) = return (i64, [])
-infer'' (Unquote _) = do
-  tv <- fresh
-  return (tv, [])
-infer'' (UnquoteSplicing _) = do
-  tv <- fresh
-  return (tv, [])
-infer'' (Quasiatom (Symbol s)) = return (TypeSymbol s, [])
-infer'' (Quasicons (Unquote _) cdr) = do
-  tv <- fresh
-  (t1, c1) <- infer'' cdr
-  return (t1, c1 ++ [(tv, t1)])
-infer'' (Quasicons (UnquoteSplicing _) cdr) = do
-  tv <- fresh
-  (t1, c1) <- infer'' cdr
-  return (t1, c1 ++ [(tv, t1)])
-infer'' (Quasicons car cdr) = do
-  (t1, c1) <- infer'' car
-  (t2, c2) <- infer'' cdr
-  return (TypeProduct t1 t2, c1 ++ c2)
+inferQuasiquote :: Syntax.Quasisexp Name
+                -> Infer (Type, [Constraint], Core.Quasisexp Typed)
+inferQuasiquote (Syntax.Quasiatom Nil) = return (unit, [], Core.Quasiatom Nil)
+inferQuasiquote (Syntax.Quasiatom (Integer n)) =
+  return (i64, [], Core.Quasiatom (Integer n))
+inferQuasiquote (Syntax.Quasiatom (Symbol s)) =
+  return (TypeSymbol s, [], Core.Quasiatom (Symbol s))
+inferQuasiquote (Syntax.Unquote x) = do
+  (t, c, x') <- infer x
+  return (t, c, Core.Unquote x')
+inferQuasiquote (Syntax.UnquoteSplicing x) = do
+  (t, c, x') <- infer x
+  return (t, c, Core.UnquoteSplicing x')
+inferQuasiquote (Syntax.Quasicons car cdr) = do
+  (t1, c1, car') <- inferQuasiquote car
+  (t2, c2, cdr') <- inferQuasiquote cdr
+  return (TypeProduct t1 t2, c1 ++ c2, Core.Quasicons car' cdr')
 
 inferTop :: Environment
-         -> [(Name, Expression Id)]
+         -> [(Name, Syntax.Expression Name)]
          -> Either TypeError Environment
 inferTop env [] = Right env
 inferTop env ((x, ex):xs) =

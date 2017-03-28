@@ -4,9 +4,9 @@ import Control.Monad.State
 import Control.Monad.Writer
 
 import Closure
-import Syntax
+import Core
 
-type Lift a = WriterT [Top Core] (State Integer) a
+type Lift a = WriterT [Top Typed] (State Integer) a
 
 fresh :: Lift Name
 fresh = do
@@ -14,7 +14,7 @@ fresh = do
   lift $ put (count + 1)
   return $ show count
 
-qqLambdaLift :: Quasisexp Core -> Lift (Quasisexp Core)
+qqLambdaLift :: Quasisexp Typed -> Lift (Quasisexp Typed)
 qqLambdaLift x@(Quasiatom _) = return x
 qqLambdaLift (Quasicons car cdr) = do
   car' <- qqLambdaLift car
@@ -27,7 +27,7 @@ qqLambdaLift (UnquoteSplicing e) = do
   e' <- lambdaLift e
   return $ UnquoteSplicing e'
 
-lambdaLift :: Expression Core -> Lift (Expression Core)
+lambdaLift :: Expression Typed -> Lift (Expression Typed)
 lambdaLift (Quote x) = return $ Quote x
 lambdaLift (Quasiquote x) = do
   x' <- qqLambdaLift x
@@ -36,14 +36,13 @@ lambdaLift (BinOp op e1 e2) = do
   e1' <- lambdaLift e1
   e2' <- lambdaLift e2
   return $ BinOp op e1' e2'
-lambdaLift (Variable x) = return $ Variable x
-lambdaLift (Lambda x e) = do
+lambdaLift (Variable x r) = return $ Variable x r
+lambdaLift (Lambda x t f e) = do
   name <- fresh
   e' <- lambdaLift e
-  let Closure (name', _, pos) = head x
-  let def = Define (Name name) [Id (name', pos)] e'
+  let def = Define (name, t) x e'
   tell [def]
-  return $ Lambda x e'
+  return $ Lambda x t f e'
 lambdaLift (Let b e2) = do
   let (x, e1) = head b
   e1' <- lambdaLift e1
@@ -61,25 +60,25 @@ lambdaLift (Call e1 e2) = do
 lambdaLift (Case e clauses) = do
   e' <- lambdaLift e
   let (bindings, bodies) = unzip clauses
-  let (names, types) = unzip bindings
-  types' <- mapM qqLambdaLift types
   bodies' <- mapM lambdaLift bodies
-  let bindings' = zip names types'
-  let clauses' = zip bindings' bodies'
+  let clauses' = zip bindings bodies'
   return $ Case e' clauses'
 
-lambdaLiftTop :: Integer -> [Name] -> Top Id -> (Program Core, Integer)
+lambdaLiftTop :: Integer -> [Name] -> Top Typed -> (Program Typed, Integer)
 lambdaLiftTop count globals (Define name [] body) =
-  (defs ++ [Define (coreId name) [] body'], count')
+  (defs ++ [Define name [] body'], count')
   where
     ((body', defs), count') =
       flip runState count . runWriterT . lambdaLift $ convert globals [] body
 lambdaLiftTop count _ _ = ([], count)
 
-lambdaLiftProgram :: Integer -> [Name] -> Program Id -> (Program Core, Integer)
+lambdaLiftProgram :: Integer
+                  -> [Name]
+                  -> Program Typed
+                  -> (Program Typed, Integer)
 lambdaLiftProgram count _ [] = ([], count)
 lambdaLiftProgram count globals (top@Define {}:rest) = (def ++ rest', count'')
   where
     (rest', count'') = lambdaLiftProgram count' (name : globals) rest
-    (def@(Define (Name name) _ _:_), count') = lambdaLiftTop count globals top
+    (def@(Define (name, _) _ _:_), count') = lambdaLiftTop count globals top
 lambdaLiftProgram count globals (_:rest) = lambdaLiftProgram count globals rest

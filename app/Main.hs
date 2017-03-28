@@ -19,7 +19,9 @@ import System.Exit
 
 import LLVM.General.AST as AST
 
+import Closure
 import Codegen
+import Core
 import Curry
 import Emit
 import Environment
@@ -28,11 +30,13 @@ import Lift
 import Parser
 import Pretty
 import Substitute
+import Syntax
 import Type
 
 data IState = IState
   { tyctx :: Environment.Environment
-  , tmctx :: AST.Module
+  , tmctx :: Syntax.Program Syntax.Name
+  , ast :: AST.Module
   , count :: Integer
   }
 
@@ -40,7 +44,7 @@ initModule :: AST.Module
 initModule = emptyModule "satori"
 
 initState :: IState
-initState = IState (Environment.empty `extends` ops') initModule 0
+initState = IState (Environment.empty `extends` ops') [] initModule 0
   where
     ops' = map (second (Forall [])) (Map.elems ops)
 
@@ -60,11 +64,11 @@ exec update source = do
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
   tyctx' <- hoistError $ inferTop (tyctx st) (definitions prog')
-  liftIO $ putStrLn $ show tyctx'
-  let prog'' = substitute (Map.fromList (definitions prog')) prog'
-  let mono = filter (not isPolymorphic) prog''
-  let (prog''', count') = lambdaLiftProgram (Main.count st) [] prog''
-  let st' = st {tyctx = tyctx' `mappend` tyctx st, Main.count = count'}
+  let core = substituteType prog'
+  let core' = substitute (Map.fromList (definitions' core)) core
+  --let mono = filter (not . isPolymorphic tyctx') prog''
+  --let (prog''', count') = lambdaLiftProgram (Main.count st) [] prog''
+  let st' = st {tyctx = tyctx' `mappend` tyctx st}
   when update (put st')
 
 cmd :: String -> Repl ()

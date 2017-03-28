@@ -23,6 +23,7 @@ library
                      , Environment
                      , Pretty
                      , Infer
+                     , Core
                      , Substitute
                      , Closure
                      , Lift

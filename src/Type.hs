@@ -28,3 +28,21 @@ i64 = TypeSymbol "i64"
 
 i1 :: Type
 i1 = TypeSymbol "i1"
+
+nth :: Integer -> Type -> Type
+nth idx t = nth' 0 t
+  where
+    nth' :: Integer -> Type -> Type
+    nth' pos (TypeArrow a b) =
+      if pos == idx
+        then a
+        else nth' (pos + 1) b
+    nth' pos (TypeProduct a b) =
+      if pos == idx
+        then a
+        else nth' (pos + 1) b
+    nth' pos (TypeSum a b) =
+      if pos == idx
+        then a
+        else nth' (pos + 1) b
+    nth' _ _ = t

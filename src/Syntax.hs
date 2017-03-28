@@ -1,30 +1,6 @@
 module Syntax where
 
-import Text.Parsec.Pos
-
-import Type
-
 type Name = String
-
-type Id = (Name, SourcePos)
-
-type Env = [Name]
-
-data Core
-  = Name Name
-  | Id (Name, Type, SourcePos)
-  | Ref (Name, Type, Int, SourcePos)
-  | Closure (Name, Type, Env, SourcePos)
-  deriving (Eq, Ord, Show)
-
-coreId :: Id -> Type -> Core
-coreId (name, pos) ty = Id (name, ty, pos)
-
-ref :: Id -> Type -> Int -> Core
-ref (name, pos) ty idx = Ref (name, ty, idx, pos)
-
-closure :: Id -> Type -> Env -> Core
-closure (name, pos) ty env = Closure (name, ty, env, pos)
 
 type Program a = [Top a]
 
@@ -54,7 +30,7 @@ data Expression a
   | Call (Expression a)
          [Expression a]
   | Case (Expression a)
-         [((Name, Quasisexp a), Expression a)]
+         [((Name, Sexp), Expression a)]
   deriving (Eq, Ord, Show)
 
 data Quasisexp a
