@@ -27,7 +27,7 @@ convert env fvs expr =
       case elemIndex x fvs of
         Nothing -> Variable x Nothing
         Just idx -> Variable x (Just idx)
-    (Lambda x t _ e) -> Lambda x t fvs' (convert env fvs' e)
+    (Lambda n x t _ e) -> Lambda n x t fvs' (convert env fvs' e)
       where x' = head x
             fvs' = sort $ nub $ free e `without` (x' : env) ++ fvs
     (Let b e2) -> Let [(x, convert env' fvs' e1)] (convert env' fvs' e2)
@@ -53,7 +53,7 @@ free (Quote _) = []
 free (Quasiquote x) = free' x
 free (BinOp _ e1 e2) = free e1 ++ free e2
 free (Variable x _) = [x]
-free (Lambda x _ _ e) = free e `without` x
+free (Lambda _ x _ _ e) = free e `without` x
 free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
   where
     (xs, es) = unzip binds

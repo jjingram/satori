@@ -37,12 +37,12 @@ lambdaLift (BinOp op e1 e2) = do
   e2' <- lambdaLift e2
   return $ BinOp op e1' e2'
 lambdaLift (Variable x r) = return $ Variable x r
-lambdaLift (Lambda x t f e) = do
+lambdaLift (Lambda _ x t f e) = do
   name <- fresh
   e' <- lambdaLift e
-  let def = Define (name, t) (x ++ free) e'
+  let def = Define (name, t) (x ++ f) e'
   tell [def]
-  return $ Lambda x t f e'
+  return $ Lambda name x t f e'
 lambdaLift (Let b e2) = do
   let (x, e1) = head b
   e1' <- lambdaLift e1

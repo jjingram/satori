@@ -30,11 +30,13 @@ import Lift
 import Parser
 import Pretty
 import Substitute
+import Syntax
 import Type
 
 data IState = IState
   { tyctx :: Environment.Environment
-  , tmctx :: AST.Module
+  , tmctx :: [(Syntax.Name, Syntax.Expression Syntax.Name)]
+  , mod :: AST.Module
   , count :: Integer
   }
 
@@ -42,7 +44,7 @@ initModule :: AST.Module
 initModule = emptyModule "satori"
 
 initState :: IState
-initState = IState (Environment.empty `extends` ops') initModule 0
+initState = IState (Environment.empty `extends` ops') [] initModule 0
   where
     ops' = map (second (Forall [])) (Map.elems ops)
 
@@ -62,14 +64,16 @@ exec update source = do
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
   let fixed = fix' prog'
-  let defs = definitions fixed
+  let defs = definitions fixed ++ tmctx st
   tyctx' <- hoistError $ inferTop (tyctx st) defs
   let prog'' = substitute (Map.fromList defs) prog'
   let tyctx'' = tyctx' `mappend` tyctx st
   let core = rights $ constraintsTop tyctx'' prog''
-  let (core', count') = lambdaLiftProgram (Main.count st) [] core
-  tmctx' <- liftIO $ codegen (tmctx st) core'
-  let st' = st {tyctx = tyctx'', Main.count = count', tmctx = tmctx'}
+  let mono = filterPolymorphic core
+  let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
+  mod' <- liftIO $ codegen (Main.mod st) mono'
+  let st' =
+        st {tyctx = tyctx'', Main.count = count', tmctx = defs, Main.mod = mod'}
   when update (put st')
 
 cmd :: String -> Repl ()
@@ -82,8 +86,8 @@ browse _ = do
 
 load :: [String] -> Repl ()
 load args = do
-  contents <- liftIO $ readFile (unwords args)
-  exec True contents
+  contents' <- liftIO $ readFile (unwords args)
+  exec True contents'
 
 typeof :: [String] -> Repl ()
 typeof args = do

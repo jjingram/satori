@@ -120,7 +120,7 @@ substituteType sub expr =
       Core.BinOp op (substituteType sub e1) (substituteType sub e2)
     Core.Variable (name, ty) r -> Core.Variable (name, ty') r
       where ty' = apply sub ty
-    Core.Lambda x t f e -> Core.Lambda x' t' f (substituteType sub e)
+    Core.Lambda n x t f e -> Core.Lambda n x' t' f (substituteType sub e)
       where (name, ty) = head x
             ty' = apply sub ty
             x' = [(name, ty')]
@@ -241,7 +241,7 @@ infer expr =
       tv <- fresh
       let name = head x
       (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
-      return (tv `TypeArrow` t, c, Core.Lambda [(name, tv)] t [] e')
+      return (tv `TypeArrow` t, c, Core.Lambda "" [(name, tv)] t [] e')
     Syntax.Call e1 e2 -> do
       let e2' = head e2
       (t1, c1, e1') <- infer e1
