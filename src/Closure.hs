@@ -3,11 +3,12 @@ module Closure where
 import Data.List
 
 import Core
+import Infer
 import Pretty ()
 
 type Name = String
 
-convert' :: [Name] -> [Name] -> Quasisexp Typed -> Quasisexp Typed
+convert' :: Free -> Free -> Quasisexp Typed -> Quasisexp Typed
 convert' env fvs expr =
   case expr of
     (Quasiatom x) -> Quasiatom x
@@ -16,25 +17,23 @@ convert' env fvs expr =
     (Unquote e) -> Unquote $ convert env fvs e
     (UnquoteSplicing e) -> UnquoteSplicing $ convert env fvs e
 
-convert :: [Name] -> [Name] -> Expression Typed -> Expression Typed
+convert :: Free -> Free -> Expression Typed -> Expression Typed
 convert env fvs expr =
   case expr of
     (Quote x) -> Quote x
     (Quasiquote x) -> Quasiquote $ convert' env fvs x
     (BinOp op e1 e2) -> BinOp op (convert env fvs e1) (convert env fvs e2)
-    (Variable x r) ->
-      let (name, _) = x
-      in case elemIndex name fvs of
-           Nothing -> Variable x Nothing
-           Just idx -> Variable x (Just idx)
+    (Variable x _) ->
+      case elemIndex x fvs of
+        Nothing -> Variable x Nothing
+        Just idx -> Variable x (Just idx)
     (Lambda x t _ e) -> Lambda x t fvs' (convert env fvs' e)
-      where (name, _) = head x
-            fvs' = sort $ nub $ free e `without` (name : env) ++ fvs
+      where x' = head x
+            fvs' = sort $ nub $ free e `without` (x' : env) ++ fvs
     (Let b e2) -> Let [(x, convert env' fvs' e1)] (convert env' fvs' e2)
       where (x, e1) = head b
-            (name, _) = x
-            env' = name : env
-            fvs' = fvs `without` [name]
+            env' = x : env
+            fvs' = fvs `without` [x]
     (If cond tr fl) ->
       If (convert env fvs cond) (convert env fvs tr) (convert env fvs fl)
     (Call e1 e2) -> Call (convert env fvs e1) (map (convert env fvs) e2)
@@ -49,27 +48,28 @@ without
   => [a] -> [a] -> [a]
 without = foldr (filter . (/=))
 
-free :: Expression Typed -> [Name]
+free :: Expression Typed -> [Typed]
 free (Quote _) = []
-free (Quasiquote x) = vars x
+free (Quasiquote x) = free' x
 free (BinOp _ e1 e2) = free e1 ++ free e2
-free (Variable (x, _) _) = [x]
-free (Lambda x _ _ e) = free e `without` [fst (head x)]
-free (Let binds e2) = concatMap free es ++ (free e2 `without` names)
+free (Variable x _) = [x]
+free (Lambda x _ _ e) = free e `without` x
+free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
   where
     (xs, es) = unzip binds
-    (names, _) = unzip xs
 free (If cond tr fl) = free cond ++ free tr ++ free fl
 free (Call e1 e2) = free e1 ++ concatMap free e2
 free (Case x clauses) = (free x ++ bodies') `without` bindings'
   where
     (bindings, bodies) = unzip clauses
-    (bindings', _) = unzip bindings
+    (names, patterns) = unzip bindings
+    types = map inferQuote patterns
+    bindings' = zip names types
     bodies' = concatMap free bodies
 free (Fix x) = free x
 
-vars :: Quasisexp Typed -> [Name]
-vars (Quasiatom _) = []
-vars (Quasicons car cdr) = vars car ++ vars cdr
-vars (Unquote e) = free e
-vars (UnquoteSplicing e) = free e
+free' :: Quasisexp Typed -> [Typed]
+free' (Quasiatom _) = []
+free' (Quasicons car cdr) = free' car ++ free' cdr
+free' (Unquote e) = free e
+free' (UnquoteSplicing e) = free e

@@ -5,7 +5,7 @@ import Type
 
 type Typed = (Name, Type)
 
-type Free = [Name]
+type Free = [Typed]
 
 type Ref = Int
 
@@ -13,7 +13,7 @@ type Program a = [Core.Top a]
 
 data Top a
   = Define a
-           [Name]
+           [a]
            (Core.Expression a)
   | Declare Name
             [Name]

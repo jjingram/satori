@@ -9,6 +9,7 @@ module Infer
   , inferTop
   , constraintsTop
   , ops
+  , inferQuote
   ) where
 
 import Core
@@ -23,7 +24,6 @@ import Control.Monad.State
 
 import Data.List (nub)
 import qualified Data.Map as Map
-import Data.Maybe
 import qualified Data.Set as Set
 
 type Infer a = (ReaderT Environment (StateT InferState (Except TypeError)) a)
@@ -150,7 +150,9 @@ constraintsTop env (Syntax.Define x xs e:rest) =
   case constraintsExpr env e of
     Left err -> Left err : constraintsTop env rest
     Right (_, _, _, Forall _ t, e') ->
-      Right (Core.Define (x, t) xs e') : constraintsTop env rest
+      Right
+        (Core.Define (x, t) (zip xs (map (nth t) [0 .. (length xs - 1)])) e') :
+      constraintsTop env rest
 constraintsTop env (Syntax.Declare {}:rest) = constraintsTop env rest
 constraintsTop env (Syntax.Command expr:rest) =
   case constraintsExpr env expr of

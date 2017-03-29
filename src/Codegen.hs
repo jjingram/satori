@@ -16,6 +16,11 @@ import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Constant as C
 import LLVM.General.AST.Global
 import qualified LLVM.General.AST.IntegerPredicate as IP
+import qualified LLVM.General.AST.Type as T
+
+import Core
+import Syntax
+import Type
 
 newtype LLVM a = LLVM
   { unLLVM :: State AST.Module a
@@ -32,7 +37,11 @@ addDefn d = do
   defs <- gets moduleDefinitions
   modify $ \s -> s {moduleDefinitions = defs ++ [d]}
 
-define :: Type -> String -> [(Type, Name)] -> [BasicBlock] -> LLVM ()
+define :: AST.Type
+       -> String
+       -> [(AST.Type, AST.Name)]
+       -> [BasicBlock]
+       -> LLVM ()
 define retty label argtys body =
   addDefn $
   GlobalDefinition $
@@ -43,7 +52,7 @@ define retty label argtys body =
   , basicBlocks = body
   }
 
-declare :: Type -> String -> [(Type, Name)] -> LLVM ()
+declare :: AST.Type -> String -> [(AST.Type, AST.Name)] -> LLVM ()
 declare retty label argtys =
   addDefn $
   GlobalDefinition $
@@ -54,8 +63,60 @@ declare retty label argtys =
   , basicBlocks = []
   }
 
-integer :: Type
-integer = IntegerType 64
+llvmType :: Type.Type -> T.Type
+llvmType (TypeSymbol "()") = T.StructureType False []
+llvmType (TypeSymbol "unit") = T.StructureType False []
+llvmType (TypeSymbol "i64") = T.i64
+llvmType (TypeSymbol _) = T.ptr T.i8
+llvmType (TypeVariable _) = error "type variable"
+llvmType t@(TypeArrow _ _) = T.FunctionType retty argtys False
+  where
+    types = llvmType' t
+    retty = last types
+    argtys = init types
+llvmType t@(TypeProduct _ _) = T.StructureType False (llvmType' t)
+llvmType (TypeSum _ _) = T.StructureType False [tag, datum]
+  where
+    tag = T.i64
+    datum = T.ptr $ T.StructureType False []
+
+llvmType' :: Type.Type -> [T.Type]
+llvmType' s@(TypeSymbol _) = [llvmType s]
+llvmType' (TypeVariable _) = error "type variable"
+llvmType' (TypeArrow a b) = llvmType a : llvmType' b
+llvmType' (TypeProduct a b) = llvmType a : llvmType' b
+llvmType' t@(TypeSum _ _) = [llvmType t]
+
+typeOf :: Core.Expression Typed -> Type.Type
+typeOf (Core.Quote (Atom Nil)) = unit
+typeOf (Core.Quote (Atom (Integer _))) = i64
+typeOf (Core.Quote (Atom (Symbol s))) = TypeSymbol s
+typeOf (Core.Quasiquote x) = typeOfQuasiquote x
+  where
+    typeOfQuasiquote :: Core.Quasisexp Typed -> Core.Quasisexp Typed
+    typeOfQuasiquote (Core.Quasiatom x) = typeOf x
+    typeOfQuasiquote (Core.Quasicons car cdr) =
+      TypeProduct (typeOf' car) (typeOf' cdr)
+    typeOfQuasiquote (Core.Unquote x) = typeOf x
+    typeOfQuasiquote (Core.UnquoteSplicing x) = typeOf x
+typeOf (Core.BinOp _ a _) = retty $ typeOf a
+typeOf (Core.Variable (_, t) _) = retty t
+typeOf (Core.Lambda _ t _ _) = retty t
+typeOf (Core.Let _ e) = retty $ typeOf e
+typeOf (Core.If _ tr fl) =
+  if ttr == tfl
+    then ttr
+    else TypeSum (retty $ typeOf tr) (retty $ typeOf fl)
+typeOf (Core.Call f _) = retty $ typeOf f
+typeOf (Core.Case _ clauses) = types'
+  where
+    (_, bodies) = unzip clauses
+    types = (map (retty . typeOf) bodies)
+    types' =
+      if all (==) types
+        then head types
+        else foldr1 TypeSum types
+typeOf (Core.Fix e) = retty $ typeOf e
 
 type Names = Map.Map String Int
 
@@ -68,8 +129,8 @@ uniqueName nm ns =
 type SymbolTable = [(String, Operand)]
 
 data CodegenState = CodegenState
-  { currentBlock :: Name
-  , blocks :: Map.Map Name BlockState
+  { currentBlock :: AST.Name
+  , blocks :: Map.Map AST.Name BlockState
   , symtab :: SymbolTable
   , blockCount :: Int
   , count :: Word
@@ -86,13 +147,13 @@ newtype Codegen a = Codegen
   { runCodegen :: State CodegenState a
   } deriving (Functor, Applicative, Monad, MonadState CodegenState)
 
-sortBlocks :: [(Name, BlockState)] -> [(Name, BlockState)]
+sortBlocks :: [(AST.Name, BlockState)] -> [(AST.Name, BlockState)]
 sortBlocks = sortBy (compare `on` (idx . snd))
 
 createBlocks :: CodegenState -> [BasicBlock]
 createBlocks m = map makeBlock $ sortBlocks $ Map.toList (blocks m)
 
-makeBlock :: (Name, BlockState) -> BasicBlock
+makeBlock :: (AST.Name, BlockState) -> BasicBlock
 makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
   where
     maketerm (Just x) = x
@@ -116,14 +177,14 @@ fresh = do
   modify $ \s -> s {count = 1 + i}
   return $ i + 1
 
-instr :: Instruction -> Codegen Operand
-instr ins = do
+instr :: Type.Type -> Instruction -> Codegen Operand
+instr ty ins = do
   n <- fresh
   let ref = UnName n
   blk <- current
   let i = stack blk
   modifyBlock (blk {stack = i ++ [ref := ins]})
-  return $ local ref
+  return $ local ref ty
 
 terminator :: Named Terminator -> Codegen (Named Terminator)
 terminator trm = do
@@ -131,10 +192,10 @@ terminator trm = do
   modifyBlock (blk {term = Just trm})
   return trm
 
-entry :: Codegen Name
+entry :: Codegen AST.Name
 entry = gets currentBlock
 
-addBlock :: String -> Codegen Name
+addBlock :: String -> Codegen AST.Name
 addBlock bname = do
   bls <- gets blocks
   ix <- gets blockCount
@@ -149,12 +210,12 @@ addBlock bname = do
     }
   return (Name qname)
 
-setBlock :: Name -> Codegen Name
+setBlock :: AST.Name -> Codegen AST.Name
 setBlock bname = do
   modify $ \s -> s {currentBlock = bname}
   return bname
 
-getBlock :: Codegen Name
+getBlock :: Codegen AST.Name
 getBlock = gets currentBlock
 
 modifyBlock :: BlockState -> Codegen ()
@@ -168,7 +229,7 @@ current = do
   blks <- gets blocks
   case Map.lookup c blks of
     Just x -> return x
-    Nothing -> error $ "No such block: " ++ show c
+    Nothing -> error $ "no such block: " ++ show c
 
 assign :: String -> Operand -> Codegen ()
 assign var x = do
@@ -180,57 +241,61 @@ getvar var = do
   syms <- gets symtab
   case lookup var syms of
     Just x -> return x
-    Nothing -> error $ "Local variable not in scope: " ++ show var
+    Nothing -> error $ "local variable not in scope: " ++ show var
 
-local :: Name -> Operand
-local = LocalReference integer
+local :: AST.Name -> Type.Type -> Operand
+local name ty = LocalReference (llvmType ty) name
 
-global :: Name -> C.Constant
-global = C.GlobalReference integer
+global :: AST.Name -> Type.Type -> C.Constant
+global name ty = C.GlobalReference (llvmType ty) name
 
-externf :: Name -> Operand
-externf = ConstantOperand . C.GlobalReference integer
+externf :: AST.Name -> Type.Type -> Operand
+externf name ty = ConstantOperand . C.GlobalReference (llvmType ty) $ name
 
-add :: Operand -> Operand -> Codegen Operand
-add a b = instr $ Add False False a b []
+add :: Operand -> Operand -> Type.Type -> Codegen Operand
+add a b t = instr t $ Add False False a b []
 
-sub :: Operand -> Operand -> Codegen Operand
-sub a b = instr $ Sub False False a b []
+sub :: Operand -> Operand -> Type.Type -> Codegen Operand
+sub a b t = instr t $ Sub False False a b []
 
-mul :: Operand -> Operand -> Codegen Operand
-mul a b = instr $ Mul False False a b []
+mul :: Operand -> Operand -> Type.Type -> Codegen Operand
+mul a b t = instr t $ Mul False False a b []
 
-sdiv :: Operand -> Operand -> Codegen Operand
-sdiv a b = instr $ SDiv False a b []
+sdiv :: Operand -> Operand -> Type.Type -> Codegen Operand
+sdiv a b t = instr t $ SDiv False a b []
 
-srem :: Operand -> Operand -> Codegen Operand
-srem a b = instr $ SRem a b []
+srem :: Operand -> Operand -> Type.Type -> Codegen Operand
+srem a b t = instr t $ SRem a b []
 
-icmp :: IP.IntegerPredicate -> Operand -> Operand -> Codegen Operand
-icmp cond a b = instr $ ICmp cond a b []
+icmp :: IP.IntegerPredicate
+     -> Operand
+     -> Operand
+     -> Type.Type
+     -> Codegen Operand
+icmp cond a b t = instr t $ ICmp cond a b []
 
-ilt :: Operand -> Operand -> Codegen Operand
+ilt :: Operand -> Operand -> Type.Type -> Codegen Operand
 ilt = icmp IP.ULT
 
 constant :: C.Constant -> Operand
 constant = ConstantOperand
 
-call :: Operand -> Operand -> Codegen Operand
-call fn arg = instr $ Call Nothing CC.C [] (Right fn) [(arg, [])] [] []
+call :: Type.Type -> Operand -> Operand -> Codegen Operand
+call t fn arg = instr t $ Call Nothing CC.C [] (Right fn) [(arg, [])] [] []
 
-alloca :: Type -> Codegen Operand
-alloca ty = instr $ Alloca ty Nothing 0 []
+alloca :: Type.Type -> AST.Type -> Codegen Operand
+alloca t ty = instr t $ Alloca ty Nothing 0 []
 
-store :: Operand -> Operand -> Codegen Operand
-store ptr val = instr $ Store False ptr val Nothing 0 []
+store :: Type.Type -> Operand -> Operand -> Codegen Operand
+store t ptr val = instr t $ Store False ptr val Nothing 0 []
 
-load :: Operand -> Codegen Operand
-load ptr = instr $ Load False ptr Nothing 0 []
+load :: Type.Type -> Operand -> Codegen Operand
+load t ptr = instr t $ Load False ptr Nothing 0 []
 
-br :: Name -> Codegen (Named Terminator)
+br :: AST.Name -> Codegen (Named Terminator)
 br val = terminator $ Do $ Br val []
 
-cbr :: Operand -> Name -> Name -> Codegen (Named Terminator)
+cbr :: Operand -> AST.Name -> AST.Name -> Codegen (Named Terminator)
 cbr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 
 ret :: Operand -> Codegen (Named Terminator)

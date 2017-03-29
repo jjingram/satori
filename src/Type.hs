@@ -23,26 +23,30 @@ data Scheme =
 unit :: Type
 unit = TypeSymbol "()"
 
-i64 :: Type
-i64 = TypeSymbol "i64"
-
 i1 :: Type
 i1 = TypeSymbol "i1"
 
-nth :: Integer -> Type -> Type
-nth idx t = nth' 0 t
+i64 :: Type
+i64 = TypeSymbol "i64"
+
+nth :: Type -> Int -> Type
+nth t idx = nth' t 0
   where
-    nth' :: Integer -> Type -> Type
-    nth' pos (TypeArrow a b) =
+    nth' :: Type -> Int -> Type
+    nth' (TypeArrow a b) pos =
       if pos == idx
         then a
-        else nth' (pos + 1) b
-    nth' pos (TypeProduct a b) =
+        else nth' b (pos + 1)
+    nth' (TypeProduct a b) pos =
       if pos == idx
         then a
-        else nth' (pos + 1) b
-    nth' pos (TypeSum a b) =
+        else nth' b (pos + 1)
+    nth' (TypeSum a b) pos =
       if pos == idx
         then a
-        else nth' (pos + 1) b
+        else nth' b (pos + 1)
     nth' _ _ = t
+
+retty :: Type -> Type
+retty (TypeArrow _ b) = retty b
+retty t = t

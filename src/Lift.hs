@@ -40,7 +40,7 @@ lambdaLift (Variable x r) = return $ Variable x r
 lambdaLift (Lambda x t f e) = do
   name <- fresh
   e' <- lambdaLift e
-  let def = Define (name, t) [fst (head x)] e'
+  let def = Define (name, t) (x ++ free) e'
   tell [def]
   return $ Lambda x t f e'
 lambdaLift (Let b e2) = do
@@ -67,7 +67,7 @@ lambdaLift (Fix e) = do
   e' <- lambdaLift e
   return $ Fix e'
 
-lambdaLiftTop :: Integer -> [Name] -> Top Typed -> (Program Typed, Integer)
+lambdaLiftTop :: Integer -> Free -> Top Typed -> (Program Typed, Integer)
 lambdaLiftTop count globals top =
   case top of
     (Define name [] body) -> (defs ++ [Define name [] body'], count')
@@ -81,14 +81,14 @@ lambdaLiftTop count globals top =
     _ -> ([top], count)
 
 lambdaLiftProgram :: Integer
-                  -> [Name]
+                  -> Free
                   -> Program Typed
                   -> (Program Typed, Integer)
 lambdaLiftProgram count _ [] = ([], count)
 lambdaLiftProgram count globals (top@Define {}:rest) = (def ++ rest', count'')
   where
     (rest', count'') = lambdaLiftProgram count' (name : globals) rest
-    (def@(Define (name, _) _ _:_), count') = lambdaLiftTop count globals top
+    (def@(Define name _ _:_), count') = lambdaLiftTop count globals top
 lambdaLiftProgram count globals (top@Command {}:rest) = (cmd ++ rest', count'')
   where
     (rest', count'') = lambdaLiftProgram count' globals rest
