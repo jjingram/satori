@@ -276,6 +276,9 @@ store t ptr val = instr t $ Store False ptr val Nothing 0 []
 load :: AST.Type -> Operand -> Codegen Operand
 load t ptr = instr t $ Load False ptr Nothing 0 []
 
+bitCast :: AST.Type -> Operand -> Codegen Operand
+bitCast t op0 = instr t $ BitCast op0 t []
+
 gep :: AST.Type -> Operand -> [Operand] -> Codegen Operand
 gep t addr idxs = instr t $ GetElementPtr False addr idxs []
 

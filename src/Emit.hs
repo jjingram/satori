@@ -8,13 +8,10 @@ import LLVM.General.Module
 
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Operand as O
 import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.PrettyPrint as PP
 
 import Control.Monad.Except
 
-import Closure
 import Codegen
 import Core
 import Syntax
@@ -27,26 +24,23 @@ codegenTop :: Core.Top Typed -> LLVM ()
 codegenTop (Core.Define name params body) = do
   _ <-
     globalVariable (show x) (T.ptr $ T.StructureType False [fnPtrType, types'])
-  define rty x [(types', AST.UnName 0), (pty, AST.Name param)] bls
+  define rty x [(Codegen.unit, AST.UnName 0), (pty, AST.Name param)] bls
   where
     (x, _) = name
     rty =
       case typeOf body of
-        TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
+        TypeArrow a b -> T.ptr $ T.StructureType False [rty'', Codegen.unit]
           where rty'' =
-                  T.ptr $ T.FunctionType (llvmType b) [f', llvmType a] False
-                f = free body
-                (_, fTypes) = unzip f
-                fTypes' = map llvmType fTypes
-                f' = T.ptr $ T.StructureType False fTypes'
+                  T.ptr $
+                  T.FunctionType (llvmType b) [Codegen.unit, llvmType a] False
         rty' -> llvmType rty'
     (param, paramType) = head params
     pty =
       case paramType of
-        TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
+        TypeArrow a b -> T.ptr $ T.StructureType False [rty'', Codegen.unit]
           where rty'' =
-                  T.ptr $ T.FunctionType (llvmType b) [f', llvmType a] False
-                f' = Codegen.unit
+                  T.ptr $
+                  T.FunctionType (llvmType b) [Codegen.unit, llvmType a] False
         pty' -> llvmType pty'
     free'' = tail params
     (_, types) = unzip free''
@@ -61,12 +55,13 @@ codegenTop (Core.Define name params body) = do
         _ <- store pty var (local (AST.Name param) pty)
         assign param var
         let f = tail params
-        let env = local (AST.UnName 0) types'
+        let f' = local (AST.UnName 0) Codegen.unit
+        freeBitCast <- bitCast types' f'
         forM_ (zip [0 .. (length f - 1)] f) $ \(idx', (name', ty)) -> do
           v <-
             gep
               (T.ptr (llvmType ty))
-              env
+              freeBitCast
               [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
           assign name' v
         cgen body >>= ret
@@ -104,25 +99,22 @@ cgen (Core.Variable x _) = do
   let (name, t) = x
   x' <- getvar name
   load (llvmType t) x'
-cgen (Core.Lambda name params ty f body) = do
+cgen (Core.Lambda name params _ f body) = do
   let (_, types) = unzip f
   let (_, paramType) = head params
   let pty =
         case paramType of
-          TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
+          TypeArrow a b -> T.ptr $ T.StructureType False [rty'', Codegen.unit]
             where rty'' =
-                    T.ptr $ T.FunctionType (llvmType b) [f', llvmType a] False
-                  f' = Codegen.unit
+                    T.ptr $
+                    T.FunctionType (llvmType b) [Codegen.unit, llvmType a] False
           pty' -> llvmType pty'
   let rty =
         case typeOf body of
-          TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
+          TypeArrow a b -> T.ptr $ T.StructureType False [rty'', Codegen.unit]
             where rty'' =
-                    T.ptr $ T.FunctionType (llvmType b) [f', llvmType a] False
-                  f = free body
-                  (_, fTypes) = unzip f
-                  fTypes' = map llvmType fTypes
-                  f' = T.ptr $ T.StructureType False fTypes'
+                    T.ptr $
+                    T.FunctionType (llvmType b) [Codegen.unit, llvmType a] False
           rty' -> llvmType rty'
   let t = T.StructureType False (map llvmType types)
   var <- alloca t
@@ -136,9 +128,9 @@ cgen (Core.Lambda name params ty f body) = do
         var
         [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
     store fty' ptr v'
-  let fnType = T.FunctionType rty [T.ptr t, pty] False
+  let fnType = T.FunctionType rty [Codegen.unit, pty] False
   let fnPtrType = T.ptr fnType
-  let closureType = T.StructureType False [fnPtrType, T.ptr t]
+  let closureType = T.StructureType False [fnPtrType, Codegen.unit]
   closurePtr <- alloca closureType
   fnPtrPtr <-
     gep
@@ -146,12 +138,13 @@ cgen (Core.Lambda name params ty f body) = do
       closurePtr
       [constant $ C.Int 32 0, constant $ C.Int 32 0]
   _ <- store fnPtrType fnPtrPtr (externf (AST.UnName name) fnType)
-  envPtrPtr <-
+  freePtrPtr <-
     gep
       (T.ptr fnPtrType)
       closurePtr
       [constant $ C.Int 32 0, constant $ C.Int 32 1]
-  _ <- store (T.ptr t) envPtrPtr var
+  freeBitCast <- bitCast Codegen.unit var
+  _ <- store (T.ptr t) freePtrPtr freeBitCast
   return closurePtr
 cgen (Core.Call fn args) = do
   let arg = head args
@@ -161,24 +154,23 @@ cgen (Core.Call fn args) = do
   fnPtrPtr <-
     gep Codegen.unit closurePtr [constant $ C.Int 32 0, constant $ C.Int 32 0]
   fnPtr <- load Codegen.unit fnPtrPtr
-  envPtrPtr <-
+  freePtrPtr <-
     gep Codegen.unit closurePtr [constant $ C.Int 32 0, constant $ C.Int 32 1]
-  envPtr <- load Codegen.unit envPtrPtr
-  call fnPtr [envPtr, carg] (llvmType t)
+  freePtr <- load Codegen.unit freePtrPtr
+  call fnPtr [freePtr, carg] (llvmType t)
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
 codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
 codegen m fns =
-  withContext $ \context -> do
-    liftIO $ putStrLn $ PP.showPretty newast
+  withContext $ \context ->
     liftError $
-      withModuleFromAST context newast $ \m' -> do
-        llstr <- moduleLLVMAssembly m'
-        putStrLn llstr
-        liftError $ verify m'
-        return newast
+    withModuleFromAST context newast $ \m' -> do
+      llstr <- moduleLLVMAssembly m'
+      putStrLn llstr
+      liftError $ verify m'
+      return newast
   where
     modn = mapM codegenTop fns
     newast = runLLVM m modn
