@@ -14,7 +14,7 @@ import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Attribute as A
 import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Constant as C
-import LLVM.General.AST.Global
+import LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.IntegerPredicate as IP
 import qualified LLVM.General.AST.Type as T
 
@@ -35,20 +35,32 @@ addDefn d = do
   defs <- gets moduleDefinitions
   modify $ \s -> s {moduleDefinitions = defs ++ [d]}
 
-define :: AST.Type
-       -> String
-       -> [(AST.Type, AST.Name)]
-       -> [BasicBlock]
-       -> LLVM ()
+define :: AST.Type -> Word -> [(AST.Type, AST.Name)] -> [BasicBlock] -> LLVM ()
 define ty label argtys body =
   addDefn $
   GlobalDefinition $
   functionDefaults
-  { name = Name label
+  { name = UnName label
   , parameters = ([Parameter ty' nm [] | (ty', nm) <- argtys], False)
   , returnType = ty
   , basicBlocks = body
   }
+
+defineMain :: AST.Type -> [BasicBlock] -> LLVM ()
+defineMain ty body =
+  addDefn $
+  GlobalDefinition $
+  functionDefaults
+  { name = Name "main"
+  , parameters = ([], False)
+  , returnType = ty
+  , basicBlocks = body
+  }
+
+globalVariable :: String -> AST.Type -> LLVM ()
+globalVariable label ty =
+  addDefn $
+  GlobalDefinition $ globalVariableDefaults {name = Name label, G.type' = ty}
 
 declare :: AST.Type -> String -> [(AST.Type, AST.Name)] -> LLVM ()
 declare ty label argtys =
@@ -84,6 +96,9 @@ llvmType' (TypeVariable _) = error "type variable"
 llvmType' (TypeArrow a b) = llvmType a : llvmType' b
 llvmType' (TypeProduct a b) = llvmType a : llvmType' b
 llvmType' t@(TypeSum _ _) = [llvmType t]
+
+unit :: AST.Type
+unit = T.ptr $ T.StructureType False []
 
 type Names = Map.Map String Int
 

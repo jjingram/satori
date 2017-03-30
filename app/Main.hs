@@ -37,14 +37,14 @@ data IState = IState
   { tyctx :: Environment.Environment
   , tmctx :: [(Syntax.Name, Syntax.Expression Syntax.Name)]
   , mod :: AST.Module
-  , count :: Integer
+  , count :: Word
   }
 
 initModule :: AST.Module
 initModule = emptyModule "satori"
 
 initState :: IState
-initState = IState (Environment.empty `extends` ops') [] initModule 0
+initState = IState (Environment.empty `extends` ops') [] initModule (0 :: Word)
   where
     ops' = map (second (Forall [])) (Map.elems ops)
 

@@ -12,7 +12,7 @@ type Ref = Int
 type Program a = [Core.Top a]
 
 data Top a
-  = Define a
+  = Define (Word, Type)
            [a]
            (Core.Expression a)
   | Declare Name
@@ -21,14 +21,14 @@ data Top a
   deriving (Eq, Ord, Show)
 
 data Expression a
-  = Quote Sexp
+  = Quote Core.Sexp
   | Quasiquote (Core.Quasisexp a)
-  | BinOp Op
+  | BinOp Core.Op
           (Core.Expression a)
           (Core.Expression a)
   | Variable a
              (Maybe Ref)
-  | Lambda Name
+  | Lambda Word
            [a]
            Type
            Free
@@ -41,28 +41,63 @@ data Expression a
   | Call (Core.Expression a)
          [Core.Expression a]
   | Case (Core.Expression a)
-         [((Name, Sexp), Core.Expression a)]
+         [((Name, Core.Sexp), Core.Expression a)]
   | Fix (Core.Expression a)
   deriving (Eq, Ord, Show)
 
 data Quasisexp a
-  = Quasiatom Atom
+  = Quasiatom Core.Atom
   | Quasicons (Core.Quasisexp a)
               (Core.Quasisexp a)
   | Unquote (Core.Expression a)
   | UnquoteSplicing (Core.Expression a)
   deriving (Eq, Ord, Show)
 
+data Sexp
+  = Atom Core.Atom
+  | Cons Core.Sexp
+         Core.Sexp
+  deriving (Eq, Ord, Show)
+
+data Atom
+  = Nil
+  | Integer Integer
+  | Symbol Name
+  deriving (Eq, Ord, Show)
+
+data Op
+  = Add
+  | Sub
+  | Mul
+  | SDiv
+  | SRem
+  | ILT
+  deriving (Eq, Ord, Show)
+
+coreSexp :: Syntax.Sexp -> Core.Sexp
+coreSexp (Syntax.Atom Syntax.Nil) = Core.Atom Core.Nil
+coreSexp (Syntax.Atom (Syntax.Integer n)) = Core.Atom (Core.Integer n)
+coreSexp (Syntax.Atom (Syntax.Symbol s)) = Core.Atom (Core.Symbol s)
+coreSexp (Syntax.Cons car cdr) = Core.Cons (coreSexp car) (coreSexp cdr)
+
+coreOp :: Syntax.Op -> Core.Op
+coreOp Syntax.Add = Core.Add
+coreOp Syntax.Mul = Core.Mul
+coreOp Syntax.Sub = Core.Sub
+coreOp Syntax.SDiv = Core.SDiv
+coreOp Syntax.SRem = Core.SRem
+coreOp Syntax.ILT = Core.ILT
+
 typeOf :: Core.Expression Typed -> Type.Type
-typeOf (Core.Quote (Atom Nil)) = unit
-typeOf (Core.Quote (Atom (Integer _))) = i64
-typeOf (Core.Quote (Atom (Symbol s))) = TypeSymbol s
-typeOf (Core.Quote (Cons car cdr)) =
+typeOf (Core.Quote (Core.Atom Core.Nil)) = unit
+typeOf (Core.Quote (Core.Atom (Core.Integer _))) = i64
+typeOf (Core.Quote (Core.Atom (Core.Symbol s))) = TypeSymbol s
+typeOf (Core.Quote (Core.Cons car cdr)) =
   TypeProduct (typeOf (Core.Quote car)) (typeOf (Core.Quote cdr))
 typeOf (Core.Quasiquote x) = typeOfQuasiquote x
   where
     typeOfQuasiquote :: Core.Quasisexp Typed -> Type.Type
-    typeOfQuasiquote (Core.Quasiatom x') = typeOf (Core.Quote (Atom x'))
+    typeOfQuasiquote (Core.Quasiatom x') = typeOf (Core.Quote (Core.Atom x'))
     typeOfQuasiquote (Core.Quasicons car cdr) =
       TypeProduct (typeOfQuasiquote car) (typeOfQuasiquote cdr)
     typeOfQuasiquote (Core.Unquote x') = typeOf x'

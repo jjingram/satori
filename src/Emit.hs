@@ -20,14 +20,15 @@ toSig :: [Name] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (llvmType $ TypeSymbol x, AST.Name x))
 
 codegenTop :: Core.Top Typed -> LLVM ()
-codegenTop (Core.Define name params body) =
-  define rty x [(types', AST.Name "__free__"), (pty, AST.Name param)] bls
+codegenTop (Core.Define name params body) = do
+  _ <- globalVariable (show x) types'
+  define rty x [(pty, AST.Name param)] bls
   where
     (x, t) = name
     arrty = llvmType' t
     rty = last arrty
-    pty = head arrty
-    (param, t') = head params
+    (param, paramType) = head params
+    pty = llvmType paramType
     free = tail params
     (_, types) = unzip free
     types' = T.ptr $ T.StructureType False (map llvmType types)
@@ -39,19 +40,20 @@ codegenTop (Core.Define name params body) =
         var <- alloca pty
         _ <- store pty var (local (AST.Name param) pty)
         assign param var
-        let free = tail params
-        forM_ (zip [0 .. (length free - 1)] free) $ \(idx, (name', ty)) -> do
+        let f = tail params
+        env <- load types' (externf (AST.Name (show x)) types')
+        forM_ (zip [0 .. (length f - 1)] f) $ \(idx', (name', ty)) -> do
           v <-
             gep
               (T.ptr (llvmType ty))
-              (local (AST.Name "__free__") types')
-              [constant $ C.Int 64 0, constant $ C.Int 64 (fromIntegral idx)]
+              env
+              [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
           assign name' v
         cgen body >>= ret
 codegenTop (Core.Declare name args) = declare T.i64 name fnargs
   where
     fnargs = toSig args
-codegenTop (Core.Command expr) = define T.i64 "main" [] blks
+codegenTop (Core.Command expr) = defineMain T.i64 blks
   where
     blks =
       createBlocks $
@@ -60,12 +62,18 @@ codegenTop (Core.Command expr) = define T.i64 "main" [] blks
         _ <- setBlock entry'
         cgen expr >>= ret
 
-binops :: Map.Map Op (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
+binops :: Map.Map Core.Op (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
 binops =
-  Map.fromList [(Add, add), (Sub, sub), (Mul, mul), (SDiv, sdiv), (ILT, srem)]
+  Map.fromList
+    [ (Core.Add, add)
+    , (Core.Sub, sub)
+    , (Core.Mul, mul)
+    , (Core.SDiv, sdiv)
+    , (Core.ILT, srem)
+    ]
 
 cgen :: Core.Expression Typed -> Codegen AST.Operand
-cgen (Core.Quote (Atom (Integer n))) = return $ constant $ C.Int 64 n
+cgen (Core.Quote (Core.Atom (Core.Integer n))) = return $ constant $ C.Int 64 n
 cgen x@(Core.BinOp op a b) = do
   let f = binops Map.! op
   let t = typeOf x
@@ -87,17 +95,24 @@ cgen (Core.Lambda name _ ty f _) = do
       gep
         (T.ptr fty')
         var
-        [constant $ C.Int 64 0, constant $ C.Int 64 (fromIntegral idx')]
+        [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
     store fty' ptr v
-  assign "__free__" var
-  return $ externf (AST.Name name) (llvmType ty)
+  _ <- store (T.ptr t) (externf (AST.Name $ show name) (llvmType ty)) var
+  return (externf (AST.UnName name) (llvmType ty))
 cgen (Core.Call fn args) = do
-  cfn <- cgen fn
   let arg = head args
   carg <- cgen arg
   let t = typeOf fn
-  free <- getvar "__free__"
-  call cfn [free, carg] (llvmType t)
+  case fn of
+    Core.Variable (name, _) _ -> do
+      free <- load Codegen.unit (externf (AST.Name name) Codegen.unit)
+      var <- getvar name
+      call var [free, carg] (llvmType t)
+    Core.Lambda name _ _ _ _ -> do
+      free <- load Codegen.unit (externf (AST.Name $ show name) Codegen.unit)
+      call (externf (AST.UnName name) (llvmType t)) [free, carg] (llvmType t)
+    call'@Core.Call {} -> cgen call'
+    _ -> error $ "cannot apply " ++ show fn
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return

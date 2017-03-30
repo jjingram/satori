@@ -17,6 +17,8 @@ import Environment
 import Syntax
 import Type
 
+import Data.Word
+
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.Reader
@@ -151,7 +153,10 @@ constraintsTop env (Syntax.Define x xs e:rest) =
     Left err -> Left err : constraintsTop env rest
     Right (_, _, _, Forall _ t, e') ->
       Right
-        (Core.Define (x, t) (zip xs (map (nth t) [0 .. (length xs - 1)])) e') :
+        (Core.Define
+           (0 :: Word, t)
+           (zip xs (map (nth t) [0 .. (length xs - 1)]))
+           e') :
       constraintsTop env rest
 constraintsTop env (Syntax.Declare {}:rest) = constraintsTop env rest
 constraintsTop env (Syntax.Command expr:rest) =
@@ -208,22 +213,31 @@ generalize env t = Forall as t
   where
     as = Set.toList $ ftv t `Set.difference` ftv env
 
-ops :: Map.Map Op (Name, Type)
+ops :: Map.Map Core.Op (Name, Type)
 ops =
   Map.fromList
-    [ (Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (Mul, ("mul", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (Sub, ("sub", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (SDiv, ("sdiv", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (SRem, ("srem", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (ILT, ("ilt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
+    [ (Core.Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Core.Mul, ("mul", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Core.Sub, ("sub", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Core.SDiv, ("sdiv", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Core.SRem, ("srem", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Core.ILT, ("ilt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
     ]
 
 infer :: Syntax.Expression Name
       -> Infer (Type, [Constraint], Core.Expression Typed)
 infer expr =
   case expr of
-    Syntax.Quote sexp -> return (inferQuote sexp, [], Core.Quote sexp)
+    Syntax.Quote sexp@(Syntax.Atom (Syntax.Integer n)) ->
+      return
+        ( (inferQuote . coreSexp) sexp
+        , []
+        , Core.Quote (Core.Atom (Core.Integer n)))
+    Syntax.Quote sexp@(Syntax.Atom (Syntax.Symbol s)) ->
+      return
+        ( (inferQuote . coreSexp) sexp
+        , []
+        , Core.Quote (Core.Atom (Core.Symbol s)))
     Syntax.Quasiquote sexp -> do
       (t, c, sexp') <- inferQuasiquote sexp
       return (t, c, Core.Quasiquote sexp')
@@ -231,9 +245,10 @@ infer expr =
       (t1, c1, e1') <- infer e1
       (t2, c2, e2') <- infer e2
       tv <- fresh
-      let u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
-          u2 = snd $ ops Map.! op
-      return (tv, c1 ++ c2 ++ [(u1, u2)], Core.BinOp op e1' e2')
+      let op' = coreOp op
+          u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
+          u2 = snd $ ops Map.! op'
+      return (tv, c1 ++ c2 ++ [(u1, u2)], Core.BinOp op' e1' e2')
     Syntax.Variable x -> do
       t <- lookupEnvironment x
       return (t, [], Core.Variable (x, t) Nothing)
@@ -241,7 +256,7 @@ infer expr =
       tv <- fresh
       let name = head x
       (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
-      return (tv `TypeArrow` t, c, Core.Lambda "" [(name, tv)] t [] e')
+      return (tv `TypeArrow` t, c, Core.Lambda (0 :: Word) [(name, tv)] t [] e')
     Syntax.Call e1 e2 -> do
       let e2' = head e2
       (t1, c1, e1') <- infer e1
@@ -267,7 +282,9 @@ infer expr =
     Syntax.Case e clauses -> do
       let (bindings, bodies) = unzip clauses
       let (names, patterns) = unzip bindings
-      let ts1 = map inferQuote patterns
+      let patterns' = map coreSexp patterns
+      let bindings' = zip names patterns'
+      let ts1 = map (inferQuote . coreSexp) patterns
       -- TODO: write `memberOf` function to check that the pattern types are part
       -- of the expression's sum type.
       (_, c, e') <- infer e
@@ -278,7 +295,7 @@ infer expr =
           (zip3 names bodies tvs)
       let (ts2, cs2, bodies') = unzip3 xs
       let cs3 = zip ts1 ts2
-      let clauses' = zip bindings bodies'
+      let clauses' = zip bindings' bodies'
       let t2 = foldr1 TypeSum ts2
       return (t2, c ++ concat cs2 ++ cs3, Core.Case e' clauses')
     Syntax.Fix e -> do
@@ -286,19 +303,20 @@ infer expr =
       tv <- fresh
       return (tv, c ++ [(tv `TypeArrow` tv, t)], Core.Fix e')
 
-inferQuote :: Sexp -> Type
-inferQuote (Atom Nil) = unit
-inferQuote (Atom (Integer _)) = i64
-inferQuote (Atom (Symbol s)) = TypeSymbol s
-inferQuote (Cons car cdr) = TypeProduct (inferQuote car) (inferQuote cdr)
+inferQuote :: Core.Sexp -> Type
+inferQuote (Core.Atom Core.Nil) = unit
+inferQuote (Core.Atom (Core.Integer _)) = i64
+inferQuote (Core.Atom (Core.Symbol s)) = TypeSymbol s
+inferQuote (Core.Cons car cdr) = TypeProduct (inferQuote car) (inferQuote cdr)
 
 inferQuasiquote :: Syntax.Quasisexp Name
                 -> Infer (Type, [Constraint], Core.Quasisexp Typed)
-inferQuasiquote (Syntax.Quasiatom Nil) = return (unit, [], Core.Quasiatom Nil)
-inferQuasiquote (Syntax.Quasiatom (Integer n)) =
-  return (i64, [], Core.Quasiatom (Integer n))
-inferQuasiquote (Syntax.Quasiatom (Symbol s)) =
-  return (TypeSymbol s, [], Core.Quasiatom (Symbol s))
+inferQuasiquote (Syntax.Quasiatom Syntax.Nil) =
+  return (unit, [], Core.Quasiatom Core.Nil)
+inferQuasiquote (Syntax.Quasiatom (Syntax.Integer n)) =
+  return (i64, [], Core.Quasiatom (Core.Integer n))
+inferQuasiquote (Syntax.Quasiatom (Syntax.Symbol s)) =
+  return (TypeSymbol s, [], Core.Quasiatom (Core.Symbol s))
 inferQuasiquote (Syntax.Unquote x) = do
   (t, c, x') <- infer x
   return (t, c, Core.Unquote x')

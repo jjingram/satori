@@ -6,13 +6,13 @@ import Control.Monad.Writer
 import Closure
 import Core
 
-type Lift a = WriterT [Top Typed] (State Integer) a
+type Lift a = WriterT [Top Typed] (State Word) a
 
-fresh :: Lift Name
+fresh :: Lift Word
 fresh = do
   count <- lift get
   lift $ put (count + 1)
-  return $ show count
+  return count
 
 qqLambdaLift :: Quasisexp Typed -> Lift (Quasisexp Typed)
 qqLambdaLift x@(Quasiatom _) = return x
@@ -42,7 +42,7 @@ lambdaLift (Lambda _ x t f e) = do
   e' <- lambdaLift e
   let def = Define (name, t) (x ++ f) e'
   tell [def]
-  return $ Lambda name x t f e'
+  return $ Lambda name x t f (Quote (Atom Nil))
 lambdaLift (Let b e2) = do
   let (x, e1) = head b
   e1' <- lambdaLift e1
@@ -67,11 +67,11 @@ lambdaLift (Fix e) = do
   e' <- lambdaLift e
   return $ Fix e'
 
-lambdaLiftTop :: Integer -> Free -> Top Typed -> (Program Typed, Integer)
+lambdaLiftTop :: Word -> Free -> Top Typed -> (Program Typed, Word)
 lambdaLiftTop count globals top =
   case top of
-    (Define name [] body) -> (defs ++ [Define name [] body'], count')
-      where ((body', defs), count') =
+    (Define _ [] body) -> (defs, count')
+      where ((_, defs), count') =
               flip runState count . runWriterT . lambdaLift $
               convert globals [] body
     (Command body) -> (defs ++ [Command body'], count')
@@ -80,15 +80,12 @@ lambdaLiftTop count globals top =
               convert globals [] body
     _ -> ([top], count)
 
-lambdaLiftProgram :: Integer
-                  -> Free
-                  -> Program Typed
-                  -> (Program Typed, Integer)
+lambdaLiftProgram :: Word -> Free -> Program Typed -> (Program Typed, Word)
 lambdaLiftProgram count _ [] = ([], count)
-lambdaLiftProgram count globals (top@Define {}:rest) = (def ++ rest', count'')
+lambdaLiftProgram count globals (top@Define {}:rest) = (rest', count'')
   where
-    (rest', count'') = lambdaLiftProgram count' (name : globals) rest
-    (def@(Define name _ _:_), count') = lambdaLiftTop count globals top
+    (rest', count'') = lambdaLiftProgram count' globals rest
+    (_, count') = lambdaLiftTop count globals top
 lambdaLiftProgram count globals (top@Command {}:rest) = (cmd ++ rest', count'')
   where
     (rest', count'') = lambdaLiftProgram count' globals rest
