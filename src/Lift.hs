@@ -42,7 +42,7 @@ lambdaLift (Lambda _ x t f e) = do
   e' <- lambdaLift e
   let def = Define (name, t) (x ++ f) e'
   tell [def]
-  return $ Lambda name x t f (Quote (Atom Nil))
+  return $ Lambda name x t f e'
 lambdaLift (Let b e2) = do
   let (x, e1) = head b
   e1' <- lambdaLift e1

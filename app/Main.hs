@@ -71,6 +71,7 @@ exec update source = do
   let core = rights $ constraintsTop tyctx'' prog''
   let mono = filterPolymorphic core
   let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
+  liftIO $ print mono'
   mod' <- liftIO $ codegen (Main.mod st) mono'
   let st' =
         st {tyctx = tyctx'', Main.count = count', tmctx = defs, Main.mod = mod'}

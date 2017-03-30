@@ -104,7 +104,9 @@ typeOf (Core.Quasiquote x) = typeOfQuasiquote x
     typeOfQuasiquote (Core.UnquoteSplicing x') = typeOf x'
 typeOf (Core.BinOp _ a _) = typeOf a
 typeOf (Core.Variable (_, t) _) = t
-typeOf (Core.Lambda _ _ t _ _) = retty t
+typeOf (Core.Lambda _ param t _ _) = TypeArrow pty t
+  where
+    (_, pty) = head param
 typeOf (Core.Let _ e) = typeOf e
 typeOf (Core.If _ tr fl) =
   if ttr == tfl

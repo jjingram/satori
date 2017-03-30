@@ -46,7 +46,3 @@ nth t idx = nth' t 0
         then a
         else nth' b (pos + 1)
     nth' _ _ = t
-
-retty :: Type -> Type
-retty (TypeArrow _ b) = retty b
-retty t = t
