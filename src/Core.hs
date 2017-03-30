@@ -115,7 +115,7 @@ typeOf (Core.If _ tr fl) =
   where
     ttr = typeOf tr
     tfl = typeOf fl
-typeOf (Core.Call f _) = typeOf f
+typeOf (Core.Call f _) = retty $ typeOf f
 typeOf (Core.Case _ clauses') = types'
   where
     (_, bodies) = unzip clauses'
@@ -125,6 +125,10 @@ typeOf (Core.Case _ clauses') = types'
         then head types
         else foldr1 TypeSum types
 typeOf (Core.Fix e) = typeOf e
+
+retty :: Type.Type -> Type.Type
+retty (TypeArrow _ b) = b
+retty x = x
 
 filterPolymorphic :: Core.Program Typed -> Core.Program Typed
 filterPolymorphic [] = []

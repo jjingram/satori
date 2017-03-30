@@ -79,11 +79,13 @@ llvmType (TypeSymbol "unit") = T.StructureType False []
 llvmType (TypeSymbol "i64") = T.i64
 llvmType (TypeSymbol _) = T.ptr T.i8
 llvmType (TypeVariable _) = error "type variable"
-llvmType t@(TypeArrow _ _) = T.FunctionType ty tys False
+llvmType t@(TypeArrow _ _) =
+  T.ptr $
+  T.StructureType False [T.ptr $ T.FunctionType ty tys False, Codegen.unit]
   where
     types = llvmType' t
     ty = last types
-    tys = init types
+    tys = Codegen.unit : init types
 llvmType t@(TypeProduct _ _) = T.StructureType False (llvmType' t)
 llvmType (TypeSum _ _) = T.StructureType False [tag, datum]
   where

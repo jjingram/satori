@@ -8,7 +8,9 @@ import LLVM.General.Module
 
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Operand as O
 import qualified LLVM.General.AST.Type as T
+import qualified LLVM.General.PrettyPrint as PP
 
 import Control.Monad.Except
 
@@ -39,7 +41,13 @@ codegenTop (Core.Define name params body) = do
                 f' = T.ptr $ T.StructureType False fTypes'
         rty' -> llvmType rty'
     (param, paramType) = head params
-    pty = llvmType paramType
+    pty =
+      case paramType of
+        TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
+          where rty'' =
+                  T.ptr $ T.FunctionType (llvmType b) [f', llvmType a] False
+                f' = Codegen.unit
+        pty' -> llvmType pty'
     free'' = tail params
     (_, types) = unzip free''
     types' = T.ptr $ T.StructureType False (map llvmType types)
@@ -98,7 +106,14 @@ cgen (Core.Variable x _) = do
   load (llvmType t) x'
 cgen (Core.Lambda name params ty f body) = do
   let (_, types) = unzip f
-  let (_, pty) = head params
+  let (_, paramType) = head params
+  let pty =
+        case paramType of
+          TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
+            where rty'' =
+                    T.ptr $ T.FunctionType (llvmType b) [f', llvmType a] False
+                  f' = Codegen.unit
+          pty' -> llvmType pty'
   let rty =
         case typeOf body of
           TypeArrow a b -> T.ptr $ T.StructureType False [rty'', f']
@@ -121,7 +136,7 @@ cgen (Core.Lambda name params ty f body) = do
         var
         [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
     store fty' ptr v'
-  let fnType = T.FunctionType rty [T.ptr t, llvmType pty] False
+  let fnType = T.FunctionType rty [T.ptr t, pty] False
   let fnPtrType = T.ptr fnType
   let closureType = T.StructureType False [fnPtrType, T.ptr t]
   closurePtr <- alloca closureType
@@ -137,59 +152,33 @@ cgen (Core.Lambda name params ty f body) = do
       closurePtr
       [constant $ C.Int 32 0, constant $ C.Int 32 1]
   _ <- store (T.ptr t) envPtrPtr var
-  _ <- store closureType (externf (AST.Name $ show name) closureType) closurePtr
   return closurePtr
 cgen (Core.Call fn args) = do
   let arg = head args
   carg <- cgen arg
   let t = typeOf fn
-  case fn of
-    Core.Variable (name, _) _ -> do
-      closurePtrPtr <- getvar name
-      closurePtr <- load Codegen.unit closurePtrPtr
-      fnPtrPtr <-
-        gep
-          Codegen.unit
-          closurePtr
-          [constant $ C.Int 32 0, constant $ C.Int 32 0]
-      fnPtr <- load Codegen.unit fnPtrPtr
-      envPtrPtr <-
-        gep
-          Codegen.unit
-          closurePtr
-          [constant $ C.Int 32 0, constant $ C.Int 32 1]
-      envPtr <- load Codegen.unit envPtrPtr
-      call fnPtr [envPtr, carg] (llvmType t)
-    Core.Lambda {} -> do
-      closurePtr <- cgen fn
-      fnPtrPtr <-
-        gep
-          Codegen.unit
-          closurePtr
-          [constant $ C.Int 32 0, constant $ C.Int 32 0]
-      fnPtr <- load Codegen.unit fnPtrPtr
-      envPtrPtr <-
-        gep
-          Codegen.unit
-          closurePtr
-          [constant $ C.Int 32 0, constant $ C.Int 32 1]
-      envPtr <- load Codegen.unit envPtrPtr
-      call fnPtr [envPtr, carg] (llvmType t)
-    call'@Core.Call {} -> cgen call'
-    _ -> error $ "cannot apply " ++ show fn
+  closurePtr <- cgen fn
+  fnPtrPtr <-
+    gep Codegen.unit closurePtr [constant $ C.Int 32 0, constant $ C.Int 32 0]
+  fnPtr <- load Codegen.unit fnPtrPtr
+  envPtrPtr <-
+    gep Codegen.unit closurePtr [constant $ C.Int 32 0, constant $ C.Int 32 1]
+  envPtr <- load Codegen.unit envPtrPtr
+  call fnPtr [envPtr, carg] (llvmType t)
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
 codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
 codegen m fns =
-  withContext $ \context ->
+  withContext $ \context -> do
+    liftIO $ putStrLn $ PP.showPretty newast
     liftError $
-    withModuleFromAST context newast $ \m' -> do
-      llstr <- moduleLLVMAssembly m'
-      putStrLn llstr
-      liftError $ verify m'
-      return newast
+      withModuleFromAST context newast $ \m' -> do
+        llstr <- moduleLLVMAssembly m'
+        putStrLn llstr
+        liftError $ verify m'
+        return newast
   where
     modn = mapM codegenTop fns
     newast = runLLVM m modn
