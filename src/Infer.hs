@@ -17,8 +17,6 @@ import Environment
 import Syntax
 import Type
 
-import Data.Word
-
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.Reader
