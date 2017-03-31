@@ -9,6 +9,7 @@ import LLVM.General.Module
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Type as T
+import qualified LLVM.General.PrettyPrint as PP
 
 import Control.Monad.Except
 
@@ -21,9 +22,7 @@ toSig :: [Syntax.Name] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (llvmType $ TypeSymbol x, AST.Name x))
 
 codegenTop :: Core.Top Typed -> LLVM ()
-codegenTop (Core.Define name params body) = do
-  _ <-
-    globalVariable (show x) (T.ptr $ T.StructureType False [fnPtrType, types'])
+codegenTop (Core.Define name params body) =
   define rty x [(Codegen.unit, AST.UnName 0), (pty, AST.Name param)] bls
   where
     (x, _) = name
@@ -117,7 +116,7 @@ cgen (Core.Lambda name params _ f body) = do
                     T.FunctionType (llvmType b) [Codegen.unit, llvmType a] False
           rty' -> llvmType rty'
   let t = T.StructureType False (map llvmType types)
-  var <- alloca t
+  var <- malloc t (fromIntegral (length types))
   forM_ (zip [0 .. (length f - 1)] f) $ \(idx', (name', fty)) -> do
     v <- getvar name'
     v' <- load (llvmType fty) v
@@ -131,7 +130,7 @@ cgen (Core.Lambda name params _ f body) = do
   let fnType = T.FunctionType rty [Codegen.unit, pty] False
   let fnPtrType = T.ptr fnType
   let closureType = T.StructureType False [fnPtrType, Codegen.unit]
-  closurePtr <- alloca closureType
+  closurePtr <- malloc closureType 2
   fnPtrPtr <-
     gep
       (T.ptr fnPtrType)
@@ -164,13 +163,16 @@ liftError = runExceptT >=> either fail return
 
 codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
 codegen m fns =
-  withContext $ \context ->
+  withContext $ \context -> do
+    liftIO $ putStrLn $ PP.showPretty newast
     liftError $
-    withModuleFromAST context newast $ \m' -> do
-      llstr <- moduleLLVMAssembly m'
-      putStrLn llstr
-      liftError $ verify m'
-      return newast
+      withModuleFromAST context newast $ \m' -> do
+        llstr <- moduleLLVMAssembly m'
+        putStrLn llstr
+        liftError $ verify m'
+        return newast
   where
-    modn = mapM codegenTop fns
+    modn = do
+      declare (T.ptr T.i8) "malloc" [(T.i32, AST.Name "size")]
+      mapM codegenTop fns
     newast = runLLVM m modn

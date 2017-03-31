@@ -26,7 +26,7 @@ run fn = haskFun (castFunPtr fn :: FunPtr (IO Int))
 jit :: Context -> (EE.MCJIT -> IO a) -> IO a
 jit c = EE.withMCJIT c optlevel model ptrelim fastins
   where
-    optlevel = Nothing
+    optlevel = Just 2
     model = Nothing
     ptrelim = Nothing
     fastins = Nothing

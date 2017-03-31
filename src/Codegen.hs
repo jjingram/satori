@@ -270,6 +270,22 @@ call fn args t =
 alloca :: AST.Type -> Codegen Operand
 alloca t = instr t $ Alloca t Nothing 0 []
 
+malloc :: AST.Type -> Integer -> Codegen Operand
+malloc t nelms = do
+  op0 <-
+    gep
+      (T.ptr T.i1)
+      (constant $ C.Null $ T.ptr $ T.ptr T.i1)
+      [constant $ C.Int 32 1]
+  ptrSize <- ptrtoint T.i64 op0
+  size <- mul ptrSize (constant $ C.Int 64 nelms) T.i64
+  size' <- instr T.i32 $ Trunc size T.i32 []
+  mem <- call (externf (AST.Name "malloc") (T.ptr T.i8)) [size'] (T.ptr T.i8)
+  bitCast (T.ptr t) mem
+
+ptrtoint :: AST.Type -> Operand -> Codegen Operand
+ptrtoint t op0 = instr t $ PtrToInt op0 t []
+
 store :: AST.Type -> Operand -> Operand -> Codegen Operand
 store t ptr val = instr t $ Store False ptr val Nothing 0 []
 
