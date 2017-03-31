@@ -36,7 +36,7 @@ lambdaLift (BinOp op e1 e2) = do
   e1' <- lambdaLift e1
   e2' <- lambdaLift e2
   return $ BinOp op e1' e2'
-lambdaLift (Variable x r) = return $ Variable x r
+lambdaLift (Variable x) = return $ Variable x
 lambdaLift (Lambda _ x t f e) = do
   name <- fresh
   e' <- lambdaLift e

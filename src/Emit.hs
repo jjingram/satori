@@ -94,7 +94,7 @@ cgen x@(Core.BinOp op a b) = do
   ca <- cgen a
   cb <- cgen b
   f ca cb (llvmType t)
-cgen (Core.Variable x _) = do
+cgen (Core.Variable x) = do
   let (name, t) = x
   x' <- getvar name
   load (llvmType t) x'
@@ -163,14 +163,13 @@ liftError = runExceptT >=> either fail return
 
 codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
 codegen m fns =
-  withContext $ \context -> do
-    liftIO $ putStrLn $ PP.showPretty newast
+  withContext $ \context ->
     liftError $
-      withModuleFromAST context newast $ \m' -> do
-        llstr <- moduleLLVMAssembly m'
-        putStrLn llstr
-        liftError $ verify m'
-        return newast
+    withModuleFromAST context newast $ \m' -> do
+      llstr <- moduleLLVMAssembly m'
+      putStrLn llstr
+      liftError $ verify m'
+      return newast
   where
     modn = do
       declare (T.ptr T.i8) "malloc" [(T.i32, AST.Name "size")]

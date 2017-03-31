@@ -97,11 +97,12 @@ binding =
     return (name, init')
 
 let' :: Parser (Expression Name)
-let' = do
-  L.reserved "let"
-  bindings <- L.parens (many1 binding)
-  body <- expression
-  return $ Let bindings body
+let' =
+  L.parens $ do
+    L.reserved "let"
+    bindings <- L.parens (many1 binding)
+    body <- expression
+    return $ Let bindings body
 
 if' :: Parser (Expression Name)
 if' =
@@ -121,6 +122,7 @@ call =
 case' :: Parser (Expression Name)
 case' =
   L.parens $ do
+    L.reserved "case"
     expr <- expression
     clauses <-
       many1
@@ -140,6 +142,7 @@ expression =
   try lambda <|>
   try let' <|>
   try if' <|>
+  try case' <|>
   call
 
 quasiatom :: Parser (Quasisexp Name)

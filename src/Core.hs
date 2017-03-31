@@ -27,7 +27,6 @@ data Expression a
           (Core.Expression a)
           (Core.Expression a)
   | Variable a
-             (Maybe Ref)
   | Lambda Word
            [a]
            Type
@@ -103,7 +102,7 @@ typeOf (Core.Quasiquote x) = typeOfQuasiquote x
     typeOfQuasiquote (Core.Unquote x') = typeOf x'
     typeOfQuasiquote (Core.UnquoteSplicing x') = typeOf x'
 typeOf (Core.BinOp _ a _) = typeOf a
-typeOf (Core.Variable (_, t) _) = t
+typeOf (Core.Variable (_, t)) = t
 typeOf (Core.Lambda _ param t _ _) = TypeArrow pty t
   where
     (_, pty) = head param

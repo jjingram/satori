@@ -23,10 +23,7 @@ convert env fvs expr =
     (Quote x) -> Quote x
     (Quasiquote x) -> Quasiquote $ convert' env fvs x
     (BinOp op e1 e2) -> BinOp op (convert env fvs e1) (convert env fvs e2)
-    (Variable x _) ->
-      case elemIndex x fvs of
-        Nothing -> Variable x Nothing
-        Just idx -> Variable x (Just idx)
+    (Variable x) -> Variable x
     (Lambda n x t _ e) -> Lambda n x t fvs' (convert env fvs' e)
       where x' = head x
             fvs' = sort $ nub $ free e `without` (x' : env) ++ fvs
@@ -52,7 +49,7 @@ free :: Expression Typed -> [Typed]
 free (Quote _) = []
 free (Quasiquote x) = free' x
 free (BinOp _ e1 e2) = free e1 ++ free e2
-free (Variable x _) = [x]
+free (Variable x) = [x]
 free (Lambda _ x _ _ e) = free e `without` x
 free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
   where

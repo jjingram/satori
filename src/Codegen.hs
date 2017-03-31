@@ -141,7 +141,7 @@ makeBlock :: (AST.Name, BlockState) -> BasicBlock
 makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
   where
     maketerm (Just x) = x
-    maketerm Nothing = error $ "Block has no terminator: " ++ show l
+    maketerm Nothing = error $ "block has no terminator: " ++ show l
 
 entryBlockName :: String
 entryBlockName = "entry"

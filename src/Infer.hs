@@ -120,7 +120,7 @@ substituteType sub expr =
                   Core.UnquoteSplicing $ substituteType sub x
     Core.BinOp op e1 e2 ->
       Core.BinOp op (substituteType sub e1) (substituteType sub e2)
-    Core.Variable (name, ty) r -> Core.Variable (name, ty') r
+    Core.Variable (name, ty) -> Core.Variable (name, ty')
       where ty' = apply sub ty
     Core.Lambda n x t f e -> Core.Lambda n x' t' f (substituteType sub e)
       where (name, ty) = head x
@@ -148,7 +148,7 @@ constraintsTop :: Environment
                -> Syntax.Program Name
                -> [Either TypeError (Core.Top Typed)]
 constraintsTop _ [] = []
-constraintsTop env (Syntax.Define x xs e:rest) =
+constraintsTop env (Syntax.Define _ xs e:rest) =
   case constraintsExpr env e of
     Left err -> Left err : constraintsTop env rest
     Right (_, _, _, Forall _ t, e') ->
@@ -228,6 +228,8 @@ infer :: Syntax.Expression Name
       -> Infer (Type, [Constraint], Core.Expression Typed)
 infer expr =
   case expr of
+    Syntax.Quote sexp@(Syntax.Atom Syntax.Nil) ->
+      return ((inferQuote . coreSexp) sexp, [], Core.Quote (Core.Atom Core.Nil))
     Syntax.Quote sexp@(Syntax.Atom (Syntax.Integer n)) ->
       return
         ( (inferQuote . coreSexp) sexp
@@ -238,6 +240,11 @@ infer expr =
         ( (inferQuote . coreSexp) sexp
         , []
         , Core.Quote (Core.Atom (Core.Symbol s)))
+    Syntax.Quote sexp@(Syntax.Cons car cdr) ->
+      return
+        ( (inferQuote . coreSexp) sexp
+        , []
+        , Core.Quote (Core.Cons (coreSexp car) (coreSexp cdr)))
     Syntax.Quasiquote sexp -> do
       (t, c, sexp') <- inferQuasiquote sexp
       return (t, c, Core.Quasiquote sexp')
@@ -251,7 +258,7 @@ infer expr =
       return (tv, c1 ++ c2 ++ [(u1, u2)], Core.BinOp op' e1' e2')
     Syntax.Variable x -> do
       t <- lookupEnvironment x
-      return (t, [], Core.Variable (x, t) Nothing)
+      return (t, [], Core.Variable (x, t))
     Syntax.Lambda x e -> do
       tv <- fresh
       let name = head x
@@ -344,8 +351,12 @@ normalize (Forall _ body) = Forall (map snd ord) (normtype body)
     fv (TypeVariable a) = [a]
     fv (TypeArrow a b) = fv a ++ fv b
     fv (TypeSymbol _) = []
+    fv (TypeProduct a b) = fv a ++ fv b
+    fv (TypeSum a b) = fv a ++ fv b
     normtype (TypeArrow a b) = TypeArrow (normtype a) (normtype b)
     normtype (TypeSymbol a) = TypeSymbol a
+    normtype (TypeProduct a b) = TypeProduct (normtype a) (normtype b)
+    normtype (TypeSum a b) = TypeSum (normtype a) (normtype b)
     normtype (TypeVariable a) =
       case Prelude.lookup a ord of
         Just x -> TypeVariable x
