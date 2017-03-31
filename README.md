@@ -1,1 +1,1 @@
-![Japanese character for *satori*](https://en.wikipedia.org/wiki/File:Satori.svg)
+![Japanese character for *satori*](https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Satori.svg/350px-Satori.svg.png)
