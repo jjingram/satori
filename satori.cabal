@@ -30,6 +30,7 @@ library
                      , Lift
                      , Codegen
                      , Emit
+                     , JIT
   build-depends:       base
                      , transformers
                      , llvm-general

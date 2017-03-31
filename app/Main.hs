@@ -26,6 +26,7 @@ import Emit
 import Environment
 import Fix
 import Infer
+import JIT
 import Lift
 import Parser
 import Pretty
@@ -73,9 +74,27 @@ exec update source = do
   let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
   liftIO $ print mono'
   mod' <- liftIO $ codegen (Main.mod st) mono'
-  let st' =
-        st {tyctx = tyctx'', Main.count = count', tmctx = defs, Main.mod = mod'}
-  when update (put st')
+  res <- liftIO $ runJIT mod'
+  case res of
+    Left s -> do
+      liftIO $ putStrLn s
+      let st' =
+            st
+            { tyctx = tyctx''
+            , Main.count = count'
+            , tmctx = defs
+            , Main.mod = mod'
+            }
+      when update (put st')
+    Right optmod -> do
+      let st' =
+            st
+            { tyctx = tyctx''
+            , Main.count = count'
+            , tmctx = defs
+            , Main.mod = optmod
+            }
+      when update (put st')
 
 cmd :: String -> Repl ()
 cmd = exec True
