@@ -1,4 +1,6 @@
-module Lift where
+module Lift
+  ( lambdaLiftProgram
+  ) where
 
 import Data.List (sort, nub)
 
@@ -7,6 +9,35 @@ import Control.Monad.Writer
 
 import Syntax
 import Type
+
+without
+  :: Eq a
+  => [a] -> [a] -> [a]
+without = foldr (filter . (/=))
+
+free :: Expression Typed -> [Typed]
+free (Quote _) = []
+free (Quasiquote x) = free' x
+free (BinOp _ e1 e2) = free e1 ++ free e2
+free (Variable x) = [x]
+free (Lambda x e) = free e `without` x
+free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
+  where
+    (xs, es) = unzip binds
+free (If cond tr fl) = free cond ++ free tr ++ free fl
+free (Call e1 e2) = free e1 ++ concatMap free e2
+free (Case x clauses) = (free x ++ bodies') `without` names
+  where
+    (bindings, bodies) = unzip clauses
+    (names, _) = unzip bindings
+    bodies' = concatMap free bodies
+free (Fix x) = free x
+
+free' :: Quasisexp Typed -> [Typed]
+free' (Quasiatom _) = []
+free' (Quasicons car cdr) = free' car ++ free' cdr
+free' (Unquote e) = free e
+free' (UnquoteSplicing e) = free e
 
 convert' :: [Typed] -> [Typed] -> Quasisexp Typed -> Quasisexp Typed
 convert' env fvs expr =

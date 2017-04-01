@@ -1,4 +1,7 @@
-module Parser where
+module Parser
+  ( parseExpression
+  , parseModule
+  ) where
 
 import Text.Parsec
 import Text.Parsec.Char (char)

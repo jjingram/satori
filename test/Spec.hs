@@ -15,10 +15,10 @@ main =
         eval "((lambda (x y) x) 0 1)" `shouldReturn` (Right 0)
       it "can take a function as an argument" $ do
         eval "((lambda (f x) (f x)) (lambda (x) x) 0)" `shouldReturn` (Right 0)
-      it "can be nested and capture variables in scope" $ do
+      it "can be nested and use variables in scope" $ do
         eval "((lambda (x) ((lambda (y) x) 1)) 0)" `shouldReturn` (Right 0)
-      it "can return functions" $ do pendingWith "`y` is a type variable, FIXME"
-        --eval "((lambda (x) (lambda (y) x)) 0)" `shouldReturn` (Right 0)
+      it "can return functions" $ do
+        eval "(((lambda (x) (lambda (y) x)) 0) 1)" `shouldReturn` (Right 0)
     describe "let" $ do
       it "can bind local variables and return them" $ do
         eval "(let ((x 0)) x)" `shouldReturn` (Right 0)

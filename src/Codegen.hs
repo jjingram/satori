@@ -102,6 +102,18 @@ llvmType' t@(TypeSum _ _) = [llvmType t]
 unit :: AST.Type
 unit = T.ptr $ T.StructureType False []
 
+func :: AST.Type -> [AST.Type] -> AST.Type
+func retty paramTypes = T.FunctionType retty paramTypes False
+
+struct :: [AST.Type] -> AST.Type
+struct = T.StructureType False
+
+closure :: AST.Type -> AST.Type
+closure fnPtrType = T.ptr $ struct [fnPtrType, Codegen.unit]
+
+indices :: [Integer] -> [Operand]
+indices = map (constant . C.Int 32)
+
 type Names = Map.Map String Int
 
 uniqueName :: String -> Names -> (String, Names)
@@ -284,8 +296,8 @@ malloc t nelms = do
 ptrtoint :: AST.Type -> Operand -> Codegen Operand
 ptrtoint t op0 = instr t $ PtrToInt op0 t []
 
-store :: AST.Type -> Operand -> Operand -> Codegen Operand
-store t ptr val = instr t $ Store False ptr val Nothing 0 []
+store :: Operand -> Operand -> Codegen Operand
+store ptr val = instr T.void $ Store False ptr val Nothing 0 []
 
 load :: AST.Type -> Operand -> Codegen Operand
 load t ptr = instr t $ Load False ptr Nothing 0 []

@@ -72,35 +72,6 @@ definitions [] = []
 definitions (Define name [] expr:rest) = (name, expr) : definitions rest
 definitions (_:rest) = definitions rest
 
-without
-  :: Eq a
-  => [a] -> [a] -> [a]
-without = foldr (filter . (/=))
-
-free :: Expression Typed -> [Typed]
-free (Quote _) = []
-free (Quasiquote x) = free' x
-free (BinOp _ e1 e2) = free e1 ++ free e2
-free (Variable x) = [x]
-free (Lambda x e) = free e `without` x
-free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
-  where
-    (xs, es) = unzip binds
-free (If cond tr fl) = free cond ++ free tr ++ free fl
-free (Call e1 e2) = free e1 ++ concatMap free e2
-free (Case x clauses) = (free x ++ bodies') `without` names
-  where
-    (bindings, bodies) = unzip clauses
-    (names, _) = unzip bindings
-    bodies' = concatMap free bodies
-free (Fix x) = free x
-
-free' :: Quasisexp Typed -> [Typed]
-free' (Quasiatom _) = []
-free' (Quasicons car cdr) = free' car ++ free' cdr
-free' (Unquote e) = free e
-free' (UnquoteSplicing e) = free e
-
 typeOf :: Expression Typed -> Type.Type
 typeOf (Quote (Atom Nil)) = unit
 typeOf (Quote (Atom (Integer _))) = i64
