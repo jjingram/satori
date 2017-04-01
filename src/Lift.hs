@@ -1,18 +1,52 @@
 module Lift where
 
+import Data.List (sort, nub)
+
 import Control.Monad.State
 import Control.Monad.Writer
 
-import Closure
-import Core
+import Syntax
+import Type
+
+convert' :: [Typed] -> [Typed] -> Quasisexp Typed -> Quasisexp Typed
+convert' env fvs expr =
+  case expr of
+    (Quasiatom x) -> Quasiatom x
+    (Quasicons car cdr) ->
+      Quasicons (convert' env fvs car) (convert' env fvs cdr)
+    (Unquote e) -> Unquote $ convert env fvs e
+    (UnquoteSplicing e) -> UnquoteSplicing $ convert env fvs e
+
+convert :: [Typed] -> [Typed] -> Expression Typed -> Expression Typed
+convert env fvs expr =
+  case expr of
+    (Quote x) -> Quote x
+    (Quasiquote x) -> Quasiquote $ convert' env fvs x
+    (BinOp op e1 e2) -> BinOp op (convert env fvs e1) (convert env fvs e2)
+    (Variable x) -> Variable x
+    (Lambda x e) -> Lambda (x ++ fvs') (convert env fvs' e)
+      where x' = head x
+            fvs' = sort $ nub $ free e `without` (x' : env) ++ fvs
+    (Let b e2) -> Let [(x, convert env' fvs' e1)] (convert env' fvs' e2)
+      where (x, e1) = head b
+            env' = x : env
+            fvs' = fvs `without` [x]
+    (If cond tr fl) ->
+      If (convert env fvs cond) (convert env fvs tr) (convert env fvs fl)
+    (Call e1 e2) -> Call (convert env fvs e1) (map (convert env fvs) e2)
+    (Case e clauses) -> Case (convert env fvs e) clauses'
+      where (bindings, bodies) = unzip clauses
+            bodies' = map (convert env fvs) bodies
+            clauses' = zip bindings bodies'
+    (Fix e) -> Fix (convert env fvs e)
 
 type Lift a = WriterT [Top Typed] (State Word) a
 
-fresh :: Lift Word
+fresh :: Lift String
 fresh = do
   count <- lift get
   lift $ put (count + 1)
-  return count
+  return $ show count
 
 qqLambdaLift :: Quasisexp Typed -> Lift (Quasisexp Typed)
 qqLambdaLift x@(Quasiatom _) = return x
@@ -37,12 +71,14 @@ lambdaLift (BinOp op e1 e2) = do
   e2' <- lambdaLift e2
   return $ BinOp op e1' e2'
 lambdaLift (Variable x) = return $ Variable x
-lambdaLift (Lambda _ x t f e) = do
+lambdaLift (Lambda x e) = do
+  let (_, ty) = head x
   name <- fresh
   e' <- lambdaLift e
-  let def = Define (name, t) (x ++ f) e'
+  let ty' = TypeArrow ty (typeOf e')
+  let def = Define (name, ty') x e'
   tell [def]
-  return $ Lambda name x t f e'
+  return $ Variable (name, ty')
 lambdaLift (Let b e2) = do
   let (x, e1) = head b
   e1' <- lambdaLift e1
@@ -67,7 +103,7 @@ lambdaLift (Fix e) = do
   e' <- lambdaLift e
   return $ Fix e'
 
-lambdaLiftTop :: Word -> Free -> Top Typed -> (Program Typed, Word)
+lambdaLiftTop :: Word -> [Typed] -> Top Typed -> (Program Typed, Word)
 lambdaLiftTop count globals top =
   case top of
     (Define _ [] body) -> (defs, count')
@@ -80,7 +116,7 @@ lambdaLiftTop count globals top =
               convert globals [] body
     _ -> ([top], count)
 
-lambdaLiftProgram :: Word -> Free -> Program Typed -> (Program Typed, Word)
+lambdaLiftProgram :: Word -> [Typed] -> Program Typed -> (Program Typed, Word)
 lambdaLiftProgram count _ [] = ([], count)
 lambdaLiftProgram count globals (top@Define {}:rest) = (rest', count'')
   where

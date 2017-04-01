@@ -20,7 +20,6 @@ import System.Exit
 import LLVM.General.AST as AST
 
 import Codegen
-import Core
 import Curry
 import Emit
 import Environment

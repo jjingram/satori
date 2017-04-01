@@ -220,12 +220,10 @@ assign var x = do
   lcls <- gets symtab
   modify $ \s -> s {symtab = (var, x) : lcls}
 
-getvar :: String -> Codegen Operand
+getvar :: String -> Codegen (Maybe Operand)
 getvar var = do
   syms <- gets symtab
-  case lookup var syms of
-    Just x -> return x
-    Nothing -> error $ "local variable not in scope: " ++ show var
+  return $ lookup var syms
 
 local :: AST.Name -> AST.Type -> Operand
 local name' ty = LocalReference ty name'

@@ -33,8 +33,3 @@ qq x@(Quasiatom _) = x
 qq (Quasicons car cdr) = Quasicons (qq car) (qq cdr)
 qq (UnquoteSplicing e) = UnquoteSplicing $ curry e
 qq (Unquote e) = Unquote $ curry e
-
-definitions :: Program Name -> [(Name, Expression Name)]
-definitions [] = []
-definitions (Define name [] expr:rest) = (name, expr) : definitions rest
-definitions (_:rest) = definitions rest

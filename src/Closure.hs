@@ -2,9 +2,9 @@ module Closure where
 
 import Data.List
 
-import Core
 import Infer
 import Pretty ()
+import Syntax
 
 type Name = String
 
@@ -24,7 +24,7 @@ convert env fvs expr =
     (Quasiquote x) -> Quasiquote $ convert' env fvs x
     (BinOp op e1 e2) -> BinOp op (convert env fvs e1) (convert env fvs e2)
     (Variable x) -> Variable x
-    (Lambda n x t _ e) -> Lambda n x t fvs' (convert env fvs' e)
+    (Lambda x e) -> Lambda x (convert env fvs' e)
       where x' = head x
             fvs' = sort $ nub $ free e `without` (x' : env) ++ fvs
     (Let b e2) -> Let [(x, convert env' fvs' e1)] (convert env' fvs' e2)
@@ -39,34 +39,3 @@ convert env fvs expr =
             bodies' = map (convert env fvs) bodies
             clauses' = zip bindings bodies'
     (Fix e) -> Fix (convert env fvs e)
-
-without
-  :: Eq a
-  => [a] -> [a] -> [a]
-without = foldr (filter . (/=))
-
-free :: Expression Typed -> [Typed]
-free (Quote _) = []
-free (Quasiquote x) = free' x
-free (BinOp _ e1 e2) = free e1 ++ free e2
-free (Variable x) = [x]
-free (Lambda _ x _ _ e) = free e `without` x
-free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
-  where
-    (xs, es) = unzip binds
-free (If cond tr fl) = free cond ++ free tr ++ free fl
-free (Call e1 e2) = free e1 ++ concatMap free e2
-free (Case x clauses) = (free x ++ bodies') `without` bindings'
-  where
-    (bindings, bodies) = unzip clauses
-    (names, patterns) = unzip bindings
-    types = map inferQuote patterns
-    bindings' = zip names types
-    bodies' = concatMap free bodies
-free (Fix x) = free x
-
-free' :: Quasisexp Typed -> [Typed]
-free' (Quasiatom _) = []
-free' (Quasicons car cdr) = free' car ++ free' cdr
-free' (Unquote e) = free e
-free' (UnquoteSplicing e) = free e

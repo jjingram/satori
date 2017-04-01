@@ -9,23 +9,24 @@ import LLVM.General.Module
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.PrettyPrint as PP
 
 import Control.Monad.Except
 
 import Codegen
-import Core
 import Syntax
 import Type
 
-toSig :: [Syntax.Name] -> [(AST.Type, AST.Name)]
+type Defs = Map.Map Name (Top Typed)
+
+toSig :: [Name] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (llvmType $ TypeSymbol x, AST.Name x))
 
-codegenTop :: Core.Top Typed -> LLVM ()
-codegenTop (Core.Define name params body) =
-  define rty x [(Codegen.unit, AST.UnName 0), (pty, AST.Name param)] bls
+codegenTop :: Defs -> Top Typed -> LLVM ()
+codegenTop globals (Define name params body) =
+  define rty x' [(Codegen.unit, AST.UnName 0), (pty, AST.Name param)] bls
   where
     (x, _) = name
+    x' = read x :: Word
     rty =
       case typeOf body of
         TypeArrow a b -> T.ptr $ T.StructureType False [rty'', Codegen.unit]
@@ -44,7 +45,6 @@ codegenTop (Core.Define name params body) =
     free'' = tail params
     (_, types) = unzip free''
     types' = T.ptr $ T.StructureType False (map llvmType types)
-    fnPtrType = T.ptr $ T.FunctionType rty [types', pty] False
     bls =
       createBlocks $
       execCodegen $ do
@@ -63,42 +63,27 @@ codegenTop (Core.Define name params body) =
               freeBitCast
               [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
           assign name' v
-        cgen body >>= ret
-codegenTop (Core.Declare name args) = declare T.i64 name fnargs
+        cgen globals body >>= ret
+codegenTop _ (Declare name args) = declare T.i64 name fnargs
   where
     fnargs = toSig args
-codegenTop (Core.Command expr) = defineMain T.i64 blks
+codegenTop globals (Command expr) = defineMain T.i64 blks
   where
     blks =
       createBlocks $
       execCodegen $ do
         entry' <- addBlock entryBlockName
         _ <- setBlock entry'
-        cgen expr >>= ret
+        cgen globals expr >>= ret
 
-binops :: Map.Map Core.Op (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
+binops :: Map.Map Op (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
 binops =
-  Map.fromList
-    [ (Core.Add, add)
-    , (Core.Sub, sub)
-    , (Core.Mul, mul)
-    , (Core.SDiv, sdiv)
-    , (Core.ILT, srem)
-    ]
+  Map.fromList [(Add, add), (Sub, sub), (Mul, mul), (SDiv, sdiv), (ILT, srem)]
 
-cgen :: Core.Expression Typed -> Codegen AST.Operand
-cgen (Core.Quote (Core.Atom (Core.Integer n))) = return $ constant $ C.Int 64 n
-cgen x@(Core.BinOp op a b) = do
-  let f = binops Map.! op
-  let t = typeOf x
-  ca <- cgen a
-  cb <- cgen b
-  f ca cb (llvmType t)
-cgen (Core.Variable x) = do
-  let (name, t) = x
-  x' <- getvar name
-  load (llvmType t) x'
-cgen (Core.Lambda name params _ f body) = do
+clambda :: Top Typed -> Codegen AST.Operand
+clambda (Define (name, _) params body) = do
+  let name' = read name :: Word
+  let f = tail params
   let (_, types) = unzip f
   let (_, paramType) = head params
   let pty =
@@ -115,18 +100,21 @@ cgen (Core.Lambda name params _ f body) = do
                     T.ptr $
                     T.FunctionType (llvmType b) [Codegen.unit, llvmType a] False
           rty' -> llvmType rty'
-  let t = T.StructureType False (map llvmType types)
-  var <- malloc t (fromIntegral (length types))
-  forM_ (zip [0 .. (length f - 1)] f) $ \(idx', (name', fty)) -> do
-    v <- getvar name'
-    v' <- load (llvmType fty) v
-    let fty' = llvmType fty
-    ptr <-
-      gep
-        (T.ptr fty')
-        var
-        [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
-    store fty' ptr v'
+  let t' = T.StructureType False (map llvmType types)
+  var <- malloc t' (fromIntegral (length types))
+  forM_ (zip [0 .. (length f - 1)] f) $ \(idx', (n, fty)) -> do
+    v <- getvar n
+    case v of
+      Nothing -> error $ "variable not in scope: " ++ name
+      Just v' -> do
+        v'' <- load (llvmType fty) v'
+        let fty' = llvmType fty
+        ptr <-
+          gep
+            (T.ptr fty')
+            var
+            [constant $ C.Int 32 0, constant $ C.Int 32 (fromIntegral idx')]
+        store fty' ptr v''
   let fnType = T.FunctionType rty [Codegen.unit, pty] False
   let fnPtrType = T.ptr fnType
   let closureType = T.StructureType False [fnPtrType, Codegen.unit]
@@ -136,20 +124,40 @@ cgen (Core.Lambda name params _ f body) = do
       (T.ptr fnPtrType)
       closurePtr
       [constant $ C.Int 32 0, constant $ C.Int 32 0]
-  _ <- store fnPtrType fnPtrPtr (externf (AST.UnName name) fnType)
+  _ <- store fnPtrType fnPtrPtr (externf (AST.UnName name') fnType)
   freePtrPtr <-
     gep
       (T.ptr fnPtrType)
       closurePtr
       [constant $ C.Int 32 0, constant $ C.Int 32 1]
   freeBitCast <- bitCast Codegen.unit var
-  _ <- store (T.ptr t) freePtrPtr freeBitCast
+  _ <- store (T.ptr t') freePtrPtr freeBitCast
   return closurePtr
-cgen (Core.Call fn args) = do
+clambda _ = error "not a lambda definition"
+
+cgen :: Defs -> Expression Typed -> Codegen AST.Operand
+cgen _ (Quote (Atom (Integer n))) = return $ constant $ C.Int 64 n
+cgen globals x@(BinOp op a b) = do
+  let f = binops Map.! op
+  let t = typeOf x
+  ca <- cgen globals a
+  cb <- cgen globals b
+  f ca cb (llvmType t)
+cgen globals (Variable x) = do
+  let (name, t) = x
+  x' <- getvar name
+  case x' of
+    Just x'' -> load (llvmType t) x''
+    Nothing ->
+      case Map.lookup name globals of
+        Just def -> clambda def
+        _ -> error $ "variable not in scope: " ++ name
+cgen _ Lambda {} = error "lambda lifting unsuccessful"
+cgen globals (Call fn args) = do
   let arg = head args
-  carg <- cgen arg
+  carg <- cgen globals arg
   let t = typeOf fn
-  closurePtr <- cgen fn
+  closurePtr <- cgen globals fn
   fnPtrPtr <-
     gep Codegen.unit closurePtr [constant $ C.Int 32 0, constant $ C.Int 32 0]
   fnPtr <- load Codegen.unit fnPtrPtr
@@ -161,7 +169,7 @@ cgen (Core.Call fn args) = do
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
+codegen :: AST.Module -> Program Typed -> IO AST.Module
 codegen m fns =
   withContext $ \context ->
     liftError $
@@ -173,5 +181,5 @@ codegen m fns =
   where
     modn = do
       declare (T.ptr T.i8) "malloc" [(T.i32, AST.Name "size")]
-      mapM codegenTop fns
+      mapM (codegenTop (Map.fromList $ definitions' fns)) fns
     newast = runLLVM m modn

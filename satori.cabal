@@ -23,10 +23,8 @@ library
                      , Type
                      , Environment
                      , Pretty
-                     , Core
                      , Infer
                      , Substitute
-                     , Closure
                      , Lift
                      , Codegen
                      , Emit

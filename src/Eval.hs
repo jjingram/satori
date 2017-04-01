@@ -18,7 +18,6 @@ import LLVM.General.Module as Mod
 import LLVM.General.PassManager
 
 import Codegen
-import Core
 import Curry
 import Emit
 import Environment
@@ -26,7 +25,9 @@ import Fix
 import Infer
 import Lift
 import Parser
+import Pretty ()
 import Substitute
+import Syntax
 
 foreign import ccall "dynamic" haskFun :: FunPtr (IO Int) -> IO Int
 
@@ -65,7 +66,7 @@ runJIT mod' = do
     Left err -> Left err
     Right res' -> Right res'
 
-codegen :: AST.Module -> Core.Program Typed -> IO AST.Module
+codegen :: AST.Module -> Program Typed -> IO AST.Module
 codegen m fns =
   withContext $ \context ->
     liftError $
@@ -75,7 +76,7 @@ codegen m fns =
   where
     modn = do
       Codegen.declare (T.ptr T.i8) "malloc" [(T.i32, AST.Name "size")]
-      mapM codegenTop fns
+      mapM (codegenTop (Map.fromList $ definitions' fns)) fns
     newast = runLLVM m modn
 
 eval :: String -> IO (Either String Int)
