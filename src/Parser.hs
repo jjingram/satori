@@ -57,7 +57,8 @@ binops =
     , ("mul", Mul)
     , ("sdiv", SDiv)
     , ("srem", SRem)
-    , ("ilt", ILT)
+    , ("slt", SLT)
+    , ("eq", Syntax.EQ)
     ]
 
 binop'' :: String -> Parser Op

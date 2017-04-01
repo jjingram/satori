@@ -1,22 +1,14 @@
 module JIT where
 
-import Data.Int
-import Data.Word
 import Foreign.Ptr (FunPtr, castFunPtr)
 
 import Control.Monad.Except
 
 import qualified LLVM.General.AST as AST
-import LLVM.General.CodeModel
 import LLVM.General.Context
-import LLVM.General.Module as Mod
-import LLVM.General.Target
-
-import LLVM.General.Analysis
-import LLVM.General.PassManager
-import LLVM.General.Transforms
-
 import qualified LLVM.General.ExecutionEngine as EE
+import LLVM.General.Module as Mod
+import LLVM.General.PassManager
 
 foreign import ccall "dynamic" haskFun :: FunPtr (IO Int) -> IO Int
 

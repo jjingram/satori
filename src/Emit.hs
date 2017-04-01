@@ -8,6 +8,7 @@ import LLVM.General.Module
 
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.IntegerPredicate as IP
 import qualified LLVM.General.AST.Type as T
 
 import Control.Monad.Except
@@ -17,6 +18,9 @@ import Syntax
 import Type
 
 type Defs = Map.Map Name (Top Typed)
+
+false :: AST.Operand
+false = constant $ C.Int 64 0
 
 toSig :: [Name] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (llvmType $ TypeSymbol x, AST.Name x))
@@ -73,7 +77,15 @@ codegenTop globals (Command expr) = defineMain T.i64 blks
 
 binops :: Map.Map Op (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
 binops =
-  Map.fromList [(Add, add), (Sub, sub), (Mul, mul), (SDiv, sdiv), (ILT, srem)]
+  Map.fromList
+    [ (Add, add)
+    , (Sub, sub)
+    , (Mul, mul)
+    , (SDiv, sdiv)
+    , (SRem, srem)
+    , (SLT, slt)
+    , (Syntax.EQ, eq)
+    ]
 
 clambda :: Top Typed -> Codegen AST.Operand
 clambda (Define (name, ty) params _) = do
@@ -111,6 +123,14 @@ clambda (Define (name, ty) params _) = do
   return closurePtr
 clambda _ = error "not a lambda definition"
 
+cbinding :: Defs -> (Typed, Expression Typed) -> Codegen ()
+cbinding globals ((name, ty), expr) = do
+  let ty' = llvmType ty
+  var <- alloca ty'
+  expr' <- cgen globals expr
+  _ <- store var expr'
+  assign name var
+
 cgen :: Defs -> Expression Typed -> Codegen AST.Operand
 cgen _ (Quote (Atom (Integer n))) = return $ constant $ C.Int 64 n
 cgen globals x@(BinOp op a b) = do
@@ -129,6 +149,26 @@ cgen globals (Variable x) = do
         Just def -> clambda def
         _ -> error $ "variable not in scope: " ++ name
 cgen _ Lambda {} = error "lambda lifting unsuccessful"
+cgen globals (Let bindings expr) = do
+  _ <- mapM_ (cbinding globals) bindings
+  cgen globals expr
+cgen globals (If cond tr fl) = do
+  ifthen <- addBlock "if.then"
+  ifelse <- addBlock "if.else"
+  ifexit <- addBlock "if.exit"
+  cond' <- cgen globals cond
+  test <- icmp IP.NE false cond' T.i64
+  _ <- cbr test ifthen ifelse
+  _ <- setBlock ifthen
+  trval <- cgen globals tr
+  _ <- br ifexit
+  ifthen' <- getBlock
+  _ <- setBlock ifelse
+  flval <- cgen globals fl
+  _ <- br ifexit
+  ifelse' <- getBlock
+  _ <- setBlock ifexit
+  phi T.i64 [(trval, ifthen'), (flval, ifelse')]
 cgen globals (Call fn args) = do
   let arg = head args
   carg <- cgen globals arg

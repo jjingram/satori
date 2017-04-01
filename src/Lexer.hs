@@ -29,7 +29,7 @@ lexer = Token.makeTokenParser style
       , "define"
       , "declare"
       ]
-    ops = ["add", "sub", "mul", "sdiv", "srem", "ilt"]
+    ops = ["add", "sub", "mul", "sdiv", "srem", "slt", "eq"]
     style =
       emptyDef
       { Token.commentStart = "#|"

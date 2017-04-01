@@ -21,7 +21,7 @@ free (Quasiquote x) = free' x
 free (BinOp _ e1 e2) = free e1 ++ free e2
 free (Variable x) = [x]
 free (Lambda x e) = free e `without` x
-free (Let binds e2) = concatMap free es ++ (free e2 `without` xs)
+free (Let binds e2) = concatMap free es ++ free e2 `without` xs
   where
     (xs, es) = unzip binds
 free (If cond tr fl) = free cond ++ free tr ++ free fl
@@ -57,7 +57,7 @@ convert env fvs expr =
     (Variable x) -> Variable x
     (Lambda x e) -> Lambda (x ++ fvs') (convert env fvs' e)
       where x' = head x
-            fvs' = sort $ nub $ free e `without` (x' : env) ++ fvs
+            fvs' = sort $ nub $ (free e ++ fvs) `without` (x' : env)
     (Let b e2) -> Let [(x, convert env' fvs' e1)] (convert env' fvs' e2)
       where (x, e1) = head b
             env' = x : env

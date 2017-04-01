@@ -10,6 +10,7 @@ module Pretty
   , ppsignature
   , pptype
   , ppexpr
+  , pptop
   ) where
 
 import Environment
@@ -29,6 +30,9 @@ class Pretty p where
 
 instance Pretty Name where
   ppr _ = text
+
+instance Pretty Typed where
+  ppr p (name, ty) = parens $ ppr p name <+> text ":" <+> ppr p ty
 
 instance Pretty TypeVariable where
   ppr _ (TV x) = text x
@@ -107,7 +111,8 @@ instance Pretty Op where
   ppr _ Mul = text "mul"
   ppr _ SDiv = text "sdiv"
   ppr _ SRem = text "srem"
-  ppr _ ILT = text "ilt"
+  ppr _ SLT = text "slt"
+  ppr _ Syntax.EQ = text "eq"
 
 toList :: Sexp -> [Sexp]
 toList (Cons car (Atom Nil)) = [car]
@@ -121,17 +126,39 @@ toQuasilist sexp@(Quasicons _ (Quasiatom _)) = [sexp]
 toQuasilist (Quasicons car cdr) = car : toQuasilist cdr
 toQuasilist x = [x]
 
-ppexpr :: Expression Name -> String
+ppexpr
+  :: Pretty a
+  => Expression a -> String
 ppexpr = render . ppr 0
 
-binding :: Int -> (Name, Expression Name) -> Doc
-binding p (name, expr) = parens $ text name <+> ppr p expr
+pptop
+  :: Pretty a
+  => Top a -> String
+pptop = render . ppr 0
 
-clause :: Int -> ((Name, Sexp), Expression Name) -> Doc
+binding
+  :: Pretty a
+  => Int -> (a, Expression a) -> Doc
+binding p (name, expr) = parens $ ppr p name <+> ppr p expr
+
+clause
+  :: Pretty a
+  => Int -> ((a, Sexp), Expression a) -> Doc
 clause p ((name, sexp), expr) =
   parens (parens (ppr p name <+> ppr p sexp) $$ ppr p expr)
 
-instance Pretty (Expression Name) where
+instance Pretty a =>
+         Pretty (Top a) where
+  ppr p (Define name params expr) =
+    parens $
+    text "define" <+>
+    parens (ppr p name <+> hsep (map (ppr p) params)) $$ nest 1 (ppr p expr)
+  ppr p (Declare name params) =
+    parens $ text "declare" <+> ppr p name <+> hsep (map (ppr p) params)
+  ppr p (Command expr) = ppr p expr
+
+instance Pretty a =>
+         Pretty (Expression a) where
   ppr _ (Quote (Atom Nil)) = text "nil"
   ppr _ (Quote (Atom (Integer n))) = text $ show n
   ppr _ (Quote (Atom (Symbol s))) = text "'" <> text s
@@ -145,7 +172,7 @@ instance Pretty (Expression Name) where
   ppr p (Quasiquote (Unquote x)) = text "`," <> ppr p x
   ppr p (Quasiquote (UnquoteSplicing x)) = text "`,@" <> ppr p x
   ppr p (BinOp op a b) = ppr p op <+> ppr p a <+> ppr p b
-  ppr p (Variable a) = ppr p a
+  ppr p (Variable x) = ppr p x
   ppr p (Lambda a b) =
     parens $ text "lambda" <+> parens (hsep (map (ppr p) a)) $$ nest 1 (ppr p b)
   ppr p (Let bs e) =
@@ -165,7 +192,8 @@ instance Pretty Sexp where
   ppr _ (Atom (Symbol s)) = text s
   ppr p (Cons car cdr) = ppr p car <+> text "." <+> ppr p cdr
 
-instance Pretty (Quasisexp Name) where
+instance Pretty a =>
+         Pretty (Quasisexp a) where
   ppr _ (Quasiatom Nil) = text "nil"
   ppr _ (Quasiatom (Integer n)) = text $ show n
   ppr _ (Quasiatom (Symbol s)) = text s

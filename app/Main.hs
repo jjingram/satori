@@ -67,32 +67,40 @@ exec update source = do
   let defs = definitions fixed ++ tmctx st
   tyctx' <- hoistError $ inferTop (tyctx st) defs
   let prog'' = substitute (Map.fromList defs) prog'
+  liftIO $ mapM_ (putStrLn . pptop) prog''
   let tyctx'' = tyctx' `mappend` tyctx st
-  let core = rights $ constraintsTop tyctx'' prog''
-  let mono = filterPolymorphic core
-  let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
-  mod' <- liftIO $ codegen (Main.mod st) mono'
-  res <- liftIO $ runJIT mod'
-  case res of
-    Left s -> do
-      liftIO $ putStrLn s
-      let st' =
-            st
-            { tyctx = tyctx''
-            , Main.count = count'
-            , tmctx = defs
-            , Main.mod = mod'
-            }
-      when update (put st')
-    Right optmod -> do
-      let st' =
-            st
-            { tyctx = tyctx''
-            , Main.count = count'
-            , tmctx = defs
-            , Main.mod = optmod
-            }
-      when update (put st')
+  let core = constraintsTop tyctx'' prog''
+  let corel = lefts core
+  let corer = rights core
+  if not (null corel)
+    then liftIO $ mapM_ print corel
+    else do
+      liftIO $ mapM_ (putStrLn . pptop) corer
+      let mono = filterPolymorphic corer
+      let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
+      liftIO $ mapM_ (putStrLn . pptop) mono'
+      mod' <- liftIO $ codegen (Main.mod st) mono'
+      res <- liftIO $ runJIT mod'
+      case res of
+        Left s -> do
+          liftIO $ putStrLn s
+          let st' =
+                st
+                { tyctx = tyctx''
+                , Main.count = count'
+                , tmctx = defs
+                , Main.mod = mod'
+                }
+          when update (put st')
+        Right optmod -> do
+          let st' =
+                st
+                { tyctx = tyctx''
+                , Main.count = count'
+                , tmctx = defs
+                , Main.mod = optmod
+                }
+          when update (put st')
 
 cmd :: String -> Repl ()
 cmd = exec True

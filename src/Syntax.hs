@@ -64,7 +64,8 @@ data Op
   | Mul
   | SDiv
   | SRem
-  | ILT
+  | SLT
+  | EQ
   deriving (Eq, Ord, Show)
 
 definitions :: Program Name -> [(Name, Expression Name)]

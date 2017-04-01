@@ -128,7 +128,7 @@ substituteType sub expr =
     Let x e -> Let x' (substituteType sub e)
       where ((name, ty), e1) = head x
             ty' = apply sub ty
-            x' = [((name, ty'), e1)]
+            x' = [((name, ty'), substituteType sub e1)]
     If cond tr fl ->
       If
         (substituteType sub cond)
@@ -212,7 +212,8 @@ ops =
     , (Sub, ("sub", i64 `TypeArrow` (i64 `TypeArrow` i64)))
     , (SDiv, ("sdiv", i64 `TypeArrow` (i64 `TypeArrow` i64)))
     , (SRem, ("srem", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (ILT, ("ilt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
+    , (SLT, ("slt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
+    , (Syntax.EQ, ("eq", i64 `TypeArrow` (i64 `TypeArrow` i1)))
     ]
 
 infer :: Expression Name -> Infer (Type, [Constraint], Expression Typed)

@@ -264,8 +264,11 @@ srem a b t = instr t $ AST.SRem a b []
 icmp :: IP.IntegerPredicate -> Operand -> Operand -> AST.Type -> Codegen Operand
 icmp cond a b t = instr t $ ICmp cond a b []
 
-ilt :: Operand -> Operand -> AST.Type -> Codegen Operand
-ilt = icmp IP.ULT
+slt :: Operand -> Operand -> AST.Type -> Codegen Operand
+slt = icmp IP.SLT
+
+eq :: Operand -> Operand -> AST.Type -> Codegen Operand
+eq = icmp IP.EQ
 
 constant :: C.Constant -> Operand
 constant = ConstantOperand
@@ -313,6 +316,9 @@ br val = terminator $ Do $ Br val []
 
 cbr :: Operand -> AST.Name -> AST.Name -> Codegen (Named Terminator)
 cbr cond tr fl = terminator $ Do $ CondBr cond tr fl []
+
+phi :: AST.Type -> [(Operand, Name)] -> Codegen Operand
+phi ty incoming = instr ty $ Phi ty incoming []
 
 ret :: Operand -> Codegen (Named Terminator)
 ret val = terminator $ Do $ Ret (Just val) []
