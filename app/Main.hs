@@ -35,7 +35,7 @@ import Type
 
 data IState = IState
   { tyctx :: Environment.Environment
-  , tmctx :: [(Syntax.Name, Syntax.Expression Syntax.Name)]
+  , tmctx :: [(Syntax.Name, Expression Syntax.Name)]
   , mod :: AST.Module
   , count :: Word
   }
@@ -63,13 +63,14 @@ exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
-  let fixed = fixTop prog'
-  let defs = definitions fixed ++ tmctx st
-  let prog'' = substitute (Map.fromList defs) fixed
-  tyctx' <- hoistError $ inferTop (tyctx st) defs
-  liftIO $ mapM_ (putStrLn . pptop) prog''
+  let defs = definitions prog' ++ tmctx st
+  let prog'' = substitute (Map.fromList defs) prog'
+  let fixed = fixTop prog''
+  liftIO $ mapM_ (putStrLn . pptop) fixed
+  let defs' = definitions fixed
+  tyctx' <- hoistError $ inferTop (tyctx st) defs'
   let tyctx'' = tyctx' `mappend` tyctx st
-  let core = constraintsTop tyctx'' prog''
+  let core = constraintsTop tyctx'' fixed
   let corel = lefts core
   let corer = rights core
   if not (null corel)
@@ -88,7 +89,7 @@ exec update source = do
                 st
                 { tyctx = tyctx''
                 , Main.count = count'
-                , tmctx = defs
+                , tmctx = defs'
                 , Main.mod = mod'
                 }
           when update (put st')
@@ -97,7 +98,7 @@ exec update source = do
                 st
                 { tyctx = tyctx''
                 , Main.count = count'
-                , tmctx = defs
+                , tmctx = defs'
                 , Main.mod = optmod
                 }
           when update (put st')

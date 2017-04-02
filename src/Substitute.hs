@@ -11,9 +11,10 @@ substitute _ [] = []
 substitute subs (top:rest) =
   case top of
     (Define name formals expr) ->
-      Define name formals (substitute' (Map.delete name subs) expr) :
-      substitute subs rest
-    (Declare _ _) -> substitute subs rest
+      let expr' = substitute' (Map.delete name subs) expr
+      in Define name formals expr' :
+         substitute (Map.insert name expr' subs) rest
+    top'@Declare {} -> top' : substitute subs rest
     (Command expr) -> Command (substitute' subs expr) : substitute subs rest
   where
     substitute' :: Subs -> Expression Name -> Expression Name

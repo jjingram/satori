@@ -37,6 +37,10 @@ main =
         eval
           "(define (factorial n) (if (eq n 0) 1 (mul n (factorial (sub n 1))))) (factorial 5)" `shouldReturn`
         Right 120
+      it "can define mutually recursive functions" $
+        eval
+          "(define (even? n) (if (eq n 0) 1 (odd? (sub n 1)))) (define (odd? n) (if (eq n 0) 0 (even? (sub n 1)))) (even? 5)" `shouldReturn`
+        Right 0
     describe "if" $ do
       it "can choose the true branch" $
         eval "(if (eq 0 0) 0 1)" `shouldReturn` Right 0
