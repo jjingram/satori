@@ -31,7 +31,7 @@ free (Case x clauses) = (free x ++ bodies') `without` names
     (bindings, bodies) = unzip clauses
     (names, _) = unzip bindings
     bodies' = concatMap free bodies
-free (Fix x) = free x
+free (Fix _ e) = free e
 
 free' :: Quasisexp Typed -> [Typed]
 free' (Quasiatom _) = []
@@ -57,7 +57,7 @@ convert env fvs expr =
     (Variable x) -> Variable x
     (Lambda x e) -> Lambda (x ++ fvs') (convert env fvs' e)
       where x' = head x
-            fvs' = sort $ nub $ (free e ++ fvs) `without` (x' : env)
+            fvs' = sort $ nub $ free e `without` (x' : env)
     (Let b e2) -> Let [(x, convert env' fvs' e1)] (convert env' fvs' e2)
       where (x, e1) = head b
             env' = x : env
@@ -69,7 +69,7 @@ convert env fvs expr =
       where (bindings, bodies) = unzip clauses
             bodies' = map (convert env fvs) bodies
             clauses' = zip bindings bodies'
-    (Fix e) -> Fix (convert env fvs e)
+    (Fix name e) -> Fix name (convert env fvs e)
 
 type Lift a = WriterT [Top Typed] (State Word) a
 
@@ -130,9 +130,9 @@ lambdaLift (Case e clauses) = do
   bodies' <- mapM lambdaLift bodies
   let clauses' = zip bindings bodies'
   return $ Case e' clauses'
-lambdaLift (Fix e) = do
+lambdaLift (Fix x e) = do
   e' <- lambdaLift e
-  return $ Fix e'
+  return $ Fix x e'
 
 lambdaLiftTop :: Word -> [Typed] -> Top Typed -> (Program Typed, Word)
 lambdaLiftTop count globals top =

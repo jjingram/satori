@@ -63,10 +63,10 @@ exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
   let prog' = map curryTop prog
-  let fixed = fix' prog'
+  let fixed = fixTop prog'
   let defs = definitions fixed ++ tmctx st
+  let prog'' = substitute (Map.fromList defs) fixed
   tyctx' <- hoistError $ inferTop (tyctx st) defs
-  let prog'' = substitute (Map.fromList defs) prog'
   liftIO $ mapM_ (putStrLn . pptop) prog''
   let tyctx'' = tyctx' `mappend` tyctx st
   let core = constraintsTop tyctx'' prog''

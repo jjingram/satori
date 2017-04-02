@@ -2,38 +2,39 @@ module Fix where
 
 import Syntax
 
-fix' :: Program Name -> Program Name
-fix' (Define name params expr:rest) =
-  Define name params (fix'' name expr) : fix' rest
-fix' (_:rest) = fix' rest
-fix' [] = []
+fixTop :: Program Name -> Program Name
+fixTop (Define name params expr:rest) =
+  if isRecursive name expr
+    then Define name params (Fix name expr) : fixTop rest
+    else Define name params expr : fixTop rest
+fixTop (top:rest) = top : fixTop rest
+fixTop [] = []
 
-fix'' :: Name -> Expression Name -> Expression Name
-fix'' name expr =
+isRecursive :: Name -> Expression Name -> Bool
+isRecursive name expr =
   case expr of
-    Quote sexp -> Quote sexp
-    Quasiquote sexp -> Quasiquote $ fix''' sexp
-      where fix''' :: Quasisexp Name -> Quasisexp Name
-            fix''' s =
+    Quote _ -> False
+    Quasiquote sexp -> isRecursive' sexp
+      where isRecursive' :: Quasisexp Name -> Bool
+            isRecursive' s =
               case s of
-                Quasiatom x -> Quasiatom x
-                Quasicons car cdr -> Quasicons (fix''' car) (fix''' cdr)
-                Unquote x -> Unquote $ fix'' name x
-                UnquoteSplicing x -> UnquoteSplicing $ fix'' name x
-    BinOp op e1 e2 -> BinOp op (fix'' name e1) (fix'' name e2)
-    Variable x ->
-      if x == name
-        then Fix $ Variable x
-        else Variable x
-    Lambda params e -> Lambda params (fix'' name e)
-    Let bindings e -> Let bindings' (fix'' name e)
-      where (names, exprs) = unzip bindings
-            exprs' = map (fix'' name) exprs
-            bindings' = zip names exprs'
-    If cond tr fl -> If (fix'' name cond) (fix'' name tr) (fix'' name fl)
-    Call f args -> Call (fix'' name f) (map (fix'' name) args)
-    Case e alts -> Case (fix'' name e) alts'
-      where (binds, exprs) = unzip alts
-            exprs' = map (fix'' name) exprs
-            alts' = zip binds exprs'
-    Fix e -> Fix (fix'' name e)
+                Quasiatom _ -> False
+                Quasicons car cdr -> isRecursive' car || isRecursive' cdr
+                Unquote x -> isRecursive name x
+                UnquoteSplicing x -> isRecursive name x
+    BinOp _ e1 e2 -> isRecursive name e1 || isRecursive name e2
+    Variable x -> x == name
+    Lambda _ e -> isRecursive name e
+    Let bindings e ->
+      foldl (\acc x -> isRecursive name x || acc) False exprs ||
+      isRecursive name e
+      where (_, exprs) = unzip bindings
+    If cond tr fl ->
+      isRecursive name cond || isRecursive name tr || isRecursive name fl
+    Call f args ->
+      isRecursive name f ||
+      foldl (\acc x -> isRecursive name x || acc) False args
+    Case e alts ->
+      foldl (\acc x -> isRecursive name x || acc) False exprs ||
+      isRecursive name e
+      where (_, exprs) = unzip alts

@@ -171,7 +171,7 @@ instance Pretty a =>
     text "`" <> parens (hsep (map (ppr p) (toQuasilist sexp)))
   ppr p (Quasiquote (Unquote x)) = text "`," <> ppr p x
   ppr p (Quasiquote (UnquoteSplicing x)) = text "`,@" <> ppr p x
-  ppr p (BinOp op a b) = ppr p op <+> ppr p a <+> ppr p b
+  ppr p (BinOp op a b) = parens $ ppr p op <+> ppr p a <+> ppr p b
   ppr p (Variable x) = ppr p x
   ppr p (Lambda a b) =
     parens $ text "lambda" <+> parens (hsep (map (ppr p) a)) $$ nest 1 (ppr p b)
@@ -184,7 +184,7 @@ instance Pretty a =>
   ppr p (Call a b) = parens $ ppr p a <+> hsep (map (ppr p) b)
   ppr p (Case e clauses) =
     parens $ text "case" <+> ppr p e $$ nest 1 (vcat (map (clause p) clauses))
-  ppr p (Fix e) = parens (text "fix" <+> ppr p e)
+  ppr p (Fix e1 e2) = parens (text "fix" <+> ppr p e1 $$ nest 4 (ppr p e2))
 
 instance Pretty Sexp where
   ppr _ (Atom Nil) = text "nil"

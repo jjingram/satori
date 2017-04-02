@@ -20,7 +20,7 @@ import Type
 type Defs = Map.Map Name (Top Typed)
 
 false :: AST.Operand
-false = constant $ C.Int 64 0
+false = constant $ C.Int 1 0
 
 toSig :: [Name] -> [(AST.Type, AST.Name)]
 toSig = map (\x -> (llvmType $ TypeSymbol x, AST.Name x))
@@ -37,11 +37,7 @@ codegenTop globals (Define (name, ty) params body) =
     (TypeArrow _ rty) = ty
     rty' = llvmType rty
     (param, paramType) = head params
-    paramType' =
-      case paramType of
-        TypeArrow a b ->
-          closure $ T.ptr $ func (llvmType b) [Codegen.unit, llvmType a]
-        pty -> llvmType pty
+    paramType' = llvmType paramType
     free = tail params
     (_, types) = unzip free
     types' = T.ptr $ struct (map llvmType types)
@@ -87,30 +83,16 @@ binops =
     , (Syntax.EQ, eq)
     ]
 
-clambda :: Top Typed -> Codegen AST.Operand
-clambda (Define (name, ty) params _) = do
+clambda :: Defs -> Top Typed -> Codegen AST.Operand
+clambda globals (Define (name, ty) params _) = do
   let name' = read name :: Word
   let free = tail params
   let (_, types) = unzip free
   let (_, paramType) = head params
-  let paramType' =
-        case paramType of
-          TypeArrow a b ->
-            closure $ T.ptr $ func (llvmType b) [Codegen.unit, llvmType a]
-          pty -> llvmType pty
+  let paramType' = llvmType paramType
   let (TypeArrow _ rty) = ty
   let rty' = llvmType rty
   let freeType = struct (map llvmType types)
-  var <- malloc freeType (fromIntegral (length types))
-  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, fty)) -> do
-    v <- getvar n
-    case v of
-      Nothing -> error $ "variable not in scope: " ++ name
-      Just v' -> do
-        v'' <- load (llvmType fty) v'
-        let fty' = llvmType fty
-        ptr <- gep (T.ptr fty') var (indices [0, fromIntegral idx'])
-        store ptr v''
   let fnType = func rty' [Codegen.unit, paramType']
   let fnPtrType = T.ptr fnType
   let closureType = struct [fnPtrType, Codegen.unit]
@@ -118,10 +100,26 @@ clambda (Define (name, ty) params _) = do
   fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
   _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
   freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
+  var <- malloc freeType (fromIntegral (length types))
   freeBitCast <- bitCast Codegen.unit var
   _ <- store freePtrPtr freeBitCast
+  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, fty)) -> do
+    v <- getvar n
+    case v of
+      Nothing ->
+        case Map.lookup name globals of
+          Just _ -> do
+            ptr <-
+              gep (T.ptr (llvmType fty)) var (indices [0, fromIntegral idx'])
+            store ptr closurePtr
+          _ -> error $ "variable not in scope: " ++ name
+      Just v' -> do
+        v'' <- load (llvmType fty) v'
+        let fty' = llvmType fty
+        ptr <- gep (T.ptr fty') var (indices [0, fromIntegral idx'])
+        store ptr v''
   return closurePtr
-clambda _ = error "not a lambda definition"
+clambda _ _ = error "not a lambda definition"
 
 cbinding :: Defs -> (Typed, Expression Typed) -> Codegen ()
 cbinding globals ((name, ty), expr) = do
@@ -146,7 +144,7 @@ cgen globals (Variable x) = do
     Just x'' -> load (llvmType t) x''
     Nothing ->
       case Map.lookup name globals of
-        Just def -> clambda def
+        Just def -> clambda globals def
         _ -> error $ "variable not in scope: " ++ name
 cgen _ Lambda {} = error "lambda lifting unsuccessful"
 cgen globals (Let bindings expr) = do
@@ -172,13 +170,14 @@ cgen globals (If cond tr fl) = do
 cgen globals (Call fn args) = do
   let arg = head args
   carg <- cgen globals arg
-  let t = typeOf fn
+  let ty = typeOf fn
   closurePtr <- cgen globals fn
   fnPtrPtr <- gep Codegen.unit closurePtr (indices [0, 0])
   fnPtr <- load Codegen.unit fnPtrPtr
   freePtrPtr <- gep Codegen.unit closurePtr (indices [0, 1])
   freePtr <- load Codegen.unit freePtrPtr
-  call fnPtr [freePtr, carg] (llvmType t)
+  call fnPtr [freePtr, carg] (llvmType ty)
+cgen globals (Fix _ e) = cgen globals e
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return

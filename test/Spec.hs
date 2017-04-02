@@ -33,6 +33,10 @@ main =
         eval "(define (x) 0) (x)" `shouldReturn` Right 0
       it "can define functions" $
         eval "(define (id x) x) (id 0)" `shouldReturn` Right 0
+      it "can define recursive functions" $
+        eval
+          "(define (factorial n) (if (eq n 0) 1 (mul n (factorial (sub n 1))))) (factorial 5)" `shouldReturn`
+        Right 120
     describe "if" $ do
       it "can choose the true branch" $
         eval "(if (eq 0 0) 0 1)" `shouldReturn` Right 0

@@ -139,7 +139,10 @@ substituteType sub expr =
       where (xs, es) = unzip clauses
             es' = map (substituteType sub) es
             clauses' = zip xs es'
-    Fix e -> Fix (substituteType sub e)
+    Fix x e -> Fix x' (substituteType sub e)
+      where (name, ty) = x
+            ty' = apply sub ty
+            x' = (name, ty')
 
 constraintsTop :: Environment -> Program Name -> [Either TypeError (Top Typed)]
 constraintsTop _ [] = []
@@ -264,7 +267,7 @@ infer expr =
       (t1, c1, cond') <- infer cond
       (t2, c2, tr') <- infer tr
       (t3, c3, fl') <- infer fl
-      return (TypeSum t2 t3, c1 ++ c2 ++ c3 ++ [(t1, i1)], If cond' tr' fl')
+      return (t2, c1 ++ c2 ++ c3 ++ [(t1, i1), (t2, t3)], If cond' tr' fl')
     Case e clauses -> do
       let (bindings, bodies) = unzip clauses
       let (names, patterns) = unzip bindings
@@ -283,10 +286,10 @@ infer expr =
       let clauses' = zip bindings' bodies'
       let t2 = foldr1 TypeSum ts2
       return (t2, c ++ concat cs2 ++ cs3, Case e' clauses')
-    Fix e -> do
-      (t, c, e') <- infer e
+    Fix name e -> do
       tv <- fresh
-      return (tv, c ++ [(tv `TypeArrow` tv, t)], Fix e')
+      (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
+      return (tv, c ++ [(tv, t)], Fix (name, tv) e')
 
 inferQuote :: Sexp -> Type
 inferQuote (Atom Nil) = unit

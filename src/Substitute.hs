@@ -11,7 +11,8 @@ substitute _ [] = []
 substitute subs (top:rest) =
   case top of
     (Define name formals expr) ->
-      Define name formals (substitute' subs expr) : substitute subs rest
+      Define name formals (substitute' (Map.delete name subs) expr) :
+      substitute subs rest
     (Declare _ _) -> substitute subs rest
     (Command expr) -> Command (substitute' subs expr) : substitute subs rest
   where
@@ -43,7 +44,7 @@ substitute subs (top:rest) =
         Call e1 e2 -> Call (substitute' subs' e1) [substitute' subs' e2']
           where e2' = head e2
         Case e alts -> Case (substitute' subs' e) alts
-        Fix e -> Fix (substitute' subs' e)
+        Fix name e -> Fix name (substitute' subs' e)
     substitute'' :: Subs -> Quasisexp Name -> Quasisexp Name
     substitute'' subs' sexp =
       case sexp of

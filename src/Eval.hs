@@ -85,12 +85,12 @@ eval source =
     Left err -> return $ Left $ show err
     Right prog -> do
       let prog' = map curryTop prog
-      let fixed = fix' prog'
+      let fixed = fixTop prog'
       let defs = definitions fixed
       case inferTop Environment.empty defs of
         Left err -> return $ Left $ show err
         Right env -> do
-          let prog'' = substitute (Map.fromList defs) prog'
+          let prog'' = substitute (Map.fromList defs) fixed
           let core = rights $ constraintsTop env prog''
           let mono = filterPolymorphic core
           let (mono', _) = lambdaLiftProgram 0 [] mono

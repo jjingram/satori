@@ -35,7 +35,8 @@ data Expression a
          [Expression a]
   | Case (Expression a)
          [((a, Sexp), Expression a)]
-  | Fix (Expression a)
+  | Fix a
+        (Expression a)
   deriving (Eq, Ord, Show)
 
 data Quasisexp a
@@ -109,7 +110,7 @@ typeOf (Case _ clauses') = types'
       if and $ zipWith (==) types (tail types)
         then head types
         else foldr1 TypeSum types
-typeOf (Fix e) = typeOf e
+typeOf (Fix (_, ty) _) = ty
 
 retty :: Type.Type -> Type.Type
 retty (TypeArrow _ b) = b
