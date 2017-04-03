@@ -135,8 +135,10 @@ substituteType sub expr =
         (substituteType sub tr)
         (substituteType sub fl)
     Call f args -> Call (substituteType sub f) (map (substituteType sub) args)
-    Case e clauses -> Case (substituteType sub e) clauses'
-      where (xs, es) = unzip clauses
+    Case x clauses -> Case (name, ty') clauses'
+      where (name, ty) = x
+            ty' = apply sub ty
+            (xs, es) = unzip clauses
             es' = map (substituteType sub) es
             clauses' = zip xs es'
     Fix x e -> Fix x' (substituteType sub e)
@@ -267,25 +269,20 @@ infer expr =
       (t1, c1, cond') <- infer cond
       (t2, c2, tr') <- infer tr
       (t3, c3, fl') <- infer fl
-      return (t2, c1 ++ c2 ++ c3 ++ [(t1, i1), (t2, t3)], If cond' tr' fl')
-    Case e clauses -> do
-      let (bindings, bodies) = unzip clauses
-      let (names, patterns) = unzip bindings
-      let ts1 = map inferQuote patterns
-      let bindings' = zip (zip names ts1) patterns
-      -- TODO: write `memberOf` function to check that the pattern types are part
-      -- of the expression's sum type.
-      (_, c, e') <- infer e
-      tvs <- replicateM (length names) fresh
+      return
+        ( TypeSum t2 t3
+        , c1 ++ c2 ++ c3 ++ [(t1, i1), (t2, t3)]
+        , If cond' tr' fl')
+    Case x alts -> do
       xs <-
-        mapM
-          (\(x, body, tv) -> inEnvironment (x, Forall [] tv) (infer body))
-          (zip3 names bodies tvs)
-      let (ts2, cs2, bodies') = unzip3 xs
-      let cs3 = zip ts1 ts2
-      let clauses' = zip bindings' bodies'
-      let t2 = foldr1 TypeSum ts2
-      return (t2, c ++ concat cs2 ++ cs3, Case e' clauses')
+        mapM (\(ty, body) -> inEnvironment (x, Forall [] ty) (infer body)) alts
+      let (ts, cs, bodies') = unzip3 xs
+      let (types', _) = unzip alts
+      let alts' = zip types' bodies'
+      let t = foldr1 TypeSum ts
+      t' <- lookupEnvironment x
+      let xt = foldr1 TypeSum types'
+      return (t, concat cs ++ [(xt, t')], Case (x, xt) alts')
     Fix name e -> do
       tv <- fresh
       (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)

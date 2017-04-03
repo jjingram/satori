@@ -66,16 +66,16 @@ exec update source = do
   liftIO $ mapM_ (putStrLn . pptop) prog
   let desugared = desugar prog
   let defs = definitions desugared ++ tmctx st
-  let prog' = substitute (Map.fromList defs) desugared
+  let subbed = substitute (Map.fromList defs) desugared
   liftIO $ putStrLn "# Substituted"
-  liftIO $ mapM_ (putStrLn . pptop) prog'
-  let prog'' = map curryTop prog'
+  liftIO $ mapM_ (putStrLn . pptop) subbed
+  let curried = map curryTop subbed
   liftIO $ putStrLn "# Curried"
-  liftIO $ mapM_ (putStrLn . pptop) prog''
-  let defs' = definitions prog''
+  liftIO $ mapM_ (putStrLn . pptop) curried
+  let defs' = definitions curried
   tyctx' <- hoistError $ inferTop (tyctx st) defs'
   let tyctx'' = tyctx' `mappend` tyctx st
-  let core = constraintsTop tyctx'' prog''
+  let core = constraintsTop tyctx'' curried
   let corel = lefts core
   let corer = rights core
   if not (null corel)

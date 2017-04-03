@@ -86,13 +86,13 @@ eval source =
     Right prog -> do
       let desugared = desugar prog
       let defs = definitions desugared
-      let prog' = substitute (Map.fromList defs) desugared
-      let prog'' = map curryTop prog'
-      let defs' = definitions prog''
+      let subbed = substitute (Map.fromList defs) desugared
+      let curried = map curryTop subbed
+      let defs' = definitions curried
       case inferTop Environment.empty defs' of
         Left err -> return $ Left $ show err
         Right env -> do
-          let core = constraintsTop env prog''
+          let core = constraintsTop env curried
           let corel = lefts core
           let corer = rights core
           if not (null corel)

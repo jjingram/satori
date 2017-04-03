@@ -20,10 +20,9 @@ curry (Let bindings body) =
 curry (If cond tr fl) = If (curry cond) (curry tr) (curry fl)
 curry (Call operator operands) =
   foldl (\x e -> Call x [e]) (curry operator) (map curry operands)
-curry (Syntax.Case x clauses) = Case (curry x) (zip (zip names types) bodies')
+curry (Syntax.Case x clauses) = Case x (zip types bodies')
   where
-    (bindings, bodies) = unzip clauses
-    (names, types) = unzip bindings
+    (types, bodies) = unzip clauses
     bodies' = map curry bodies
 curry (Fix name e) = Fix name (curry e)
 

@@ -61,7 +61,10 @@ substitute subs (top:rest) =
             (substitute' subs' tr)
             (substitute' subs' fl)
         Call e1 e2 -> Call (substitute' subs' e1) (map (substitute' subs) e2)
-        Case e alts -> Case (substitute' subs' e) alts
+        Case x alts -> Case x alts'
+          where (types, bodies) = unzip alts
+                bodies' = map (substitute' subs') bodies
+                alts' = zip types bodies'
         Fix name e -> Fix name (substitute' subs' e)
     substitute'' :: Subs -> Quasisexp Name -> Quasisexp Name
     substitute'' subs' sexp =
@@ -114,8 +117,6 @@ isRecursive name expr =
     Call f args ->
       isRecursive name f ||
       foldl (\acc x -> isRecursive name x || acc) False args
-    Case e alts ->
-      foldl (\acc x -> isRecursive name x || acc) False exprs ||
-      isRecursive name e
+    Case _ alts -> foldl (\acc x -> isRecursive name x || acc) False exprs
       where (_, exprs) = unzip alts
     Fix _ e -> isRecursive name e

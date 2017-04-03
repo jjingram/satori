@@ -143,9 +143,8 @@ binding p (name, expr) = parens $ ppr p name <+> ppr p expr
 
 clause
   :: Pretty a
-  => Int -> ((a, Sexp), Expression a) -> Doc
-clause p ((name, sexp), expr) =
-  parens (parens (ppr p name <+> ppr p sexp) $$ ppr p expr)
+  => Int -> (Type, Expression a) -> Doc
+clause p (ty, expr) = parens (ppr p ty <+> ppr p expr)
 
 instance Pretty a =>
          Pretty (Top a) where
@@ -183,8 +182,8 @@ instance Pretty a =>
   ppr p (If cond tr fl) =
     parens $ text "if" <+> nest 3 (vcat (map (ppr p) [cond, tr, fl]))
   ppr p (Call a b) = parens $ ppr p a <+> hsep (map (ppr p) b)
-  ppr p (Case e clauses) =
-    parens $ text "case" <+> ppr p e $$ nest 1 (vcat (map (clause p) clauses))
+  ppr p (Case x clauses) =
+    parens $ text "case" <+> ppr p x $$ nest 1 (vcat (map (clause p) clauses))
   ppr p (Fix e1 e2) = parens (text "fix" <+> ppr p e1 $$ nest 4 (ppr p e2))
 
 instance Pretty Sexp where

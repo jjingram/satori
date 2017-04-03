@@ -13,6 +13,7 @@ import qualified Data.Map as Map
 
 import qualified Lexer as L
 import Syntax
+import Type
 
 integer :: Parser (Expression Name)
 integer = do
@@ -127,18 +128,14 @@ case' :: Parser (Expression Name)
 case' =
   L.parens $ do
     L.reserved "case"
-    expr <- expression
+    var <- L.identifier
     clauses <-
       many1
         (L.parens $ do
-           bind <-
-             L.parens $ do
-               name <- L.identifier
-               t <- sexp
-               return (name, t)
-           e <- expression
-           return (bind, e))
-    return $ Case expr clauses
+           ty <- L.identifier
+           form <- expression
+           return (TypeSymbol ty, form))
+    return $ Case var clauses
 
 expression :: Parser (Expression Name)
 expression =

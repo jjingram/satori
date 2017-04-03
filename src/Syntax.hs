@@ -33,8 +33,8 @@ data Expression a
        (Expression a)
   | Call (Expression a)
          [Expression a]
-  | Case (Expression a)
-         [((a, Sexp), Expression a)]
+  | Case a
+         [(Type, Expression a)]
   | Fix a
         (Expression a)
   deriving (Eq, Ord, Show)
