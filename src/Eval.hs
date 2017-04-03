@@ -3,6 +3,7 @@ module Eval where
 import System.IO.Unsafe
 
 import Data.Either
+import Data.List (nub)
 import qualified Data.Map as Map
 
 import Foreign.Ptr (FunPtr, castFunPtr)
@@ -28,6 +29,7 @@ import Parser
 import Pretty ()
 import Substitute
 import Syntax
+import Type
 
 foreign import ccall "dynamic" haskFun :: FunPtr (IO Int) -> IO Int
 
@@ -66,8 +68,8 @@ runJIT mod' = do
     Left err -> Left err
     Right res' -> Right res'
 
-codegen :: AST.Module -> Program Typed -> IO AST.Module
-codegen m fns =
+codegen :: AST.Module -> Program Typed -> [Type] -> IO AST.Module
+codegen m fns tys =
   withContext $ \context ->
     liftError $
     withModuleFromAST context newast $ \m' -> do
@@ -76,7 +78,7 @@ codegen m fns =
   where
     modn = do
       Codegen.declare (T.ptr T.i8) "malloc" [(T.i32, AST.Name "size")]
-      mapM (codegenTop (Map.fromList $ definitions' fns)) fns
+      mapM (codegenTop tys (Map.fromList $ definitions' fns)) fns
     newast = runLLVM m modn
 
 eval :: String -> IO (Either String Int)
@@ -100,6 +102,10 @@ eval source =
             else do
               let mono = filterPolymorphic corer
               let (mono', _) = lambdaLiftProgram 0 [] mono
+              let tys = nub $ types mono'
               mod' <-
-                Eval.codegen (AST.defaultModule {AST.moduleName = "test"}) mono'
+                Eval.codegen
+                  (AST.defaultModule {AST.moduleName = "test"})
+                  mono'
+                  tys
               return $ runJIT mod'

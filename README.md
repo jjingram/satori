@@ -7,5 +7,5 @@
 (define (length lst)
   (case lst
     (nil 0)
-    (t (add 1 (length (cdr lst))))))
+    (cons (add 1 (length (cdr lst))))))
 ```

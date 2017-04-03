@@ -269,10 +269,7 @@ infer expr =
       (t1, c1, cond') <- infer cond
       (t2, c2, tr') <- infer tr
       (t3, c3, fl') <- infer fl
-      return
-        ( TypeSum t2 t3
-        , c1 ++ c2 ++ c3 ++ [(t1, i1), (t2, t3)]
-        , If cond' tr' fl')
+      return (t2, c1 ++ c2 ++ c3 ++ [(t1, i1), (t2, t3)], If cond' tr' fl')
     Case x alts -> do
       xs <-
         mapM (\(ty, body) -> inEnvironment (x, Forall [] ty) (infer body)) alts
@@ -285,17 +282,17 @@ infer expr =
       return (t, concat cs ++ [(xt, t')], Case (x, xt) alts')
     Fix name e -> do
       tv <- fresh
-      (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
-      return (tv, c ++ [(tv, t)], Fix (name, tv) e')
+      (ty, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
+      return (tv, c ++ [(tv, ty)], Fix (name, tv) e')
 
 inferQuote :: Sexp -> Type
-inferQuote (Atom Nil) = unit
+inferQuote (Atom Nil) = nil
 inferQuote (Atom (Integer _)) = i64
 inferQuote (Atom (Symbol s)) = TypeSymbol s
 inferQuote (Cons car cdr) = TypeProduct (inferQuote car) (inferQuote cdr)
 
 inferQuasiquote :: Quasisexp Name -> Infer (Type, [Constraint], Quasisexp Typed)
-inferQuasiquote (Quasiatom Nil) = return (unit, [], Quasiatom Nil)
+inferQuasiquote (Quasiatom Nil) = return (nil, [], Quasiatom Nil)
 inferQuasiquote (Quasiatom (Integer n)) =
   return (i64, [], Quasiatom (Integer n))
 inferQuasiquote (Quasiatom (Symbol s)) =

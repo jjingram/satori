@@ -75,9 +75,9 @@ declare ty label argtys =
 
 llvmType :: Type.Type -> T.Type
 llvmType (TypeSymbol "()") = T.StructureType False []
-llvmType (TypeSymbol "unit") = T.StructureType False []
+llvmType (TypeSymbol "nil") = T.StructureType False []
 llvmType (TypeSymbol "i64") = T.i64
-llvmType (TypeSymbol _) = T.ptr T.i8
+llvmType (TypeSymbol s) = error $ "unknown type: " ++ s
 llvmType (TypeVariable _) = error "type variable"
 llvmType t@(TypeArrow _ _) = closure fnPtrType
   where
@@ -323,6 +323,12 @@ cbr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 
 phi :: AST.Type -> [(Operand, Name)] -> Codegen Operand
 phi ty incoming = instr ty $ Phi ty incoming []
+
+switch :: AST.Operand
+       -> AST.Name
+       -> [(C.Constant, Name)]
+       -> Codegen (Named Terminator)
+switch op0 def ds = terminator $ Do $ Switch op0 def ds []
 
 ret :: Operand -> Codegen (Named Terminator)
 ret val = terminator $ Do $ Ret (Just val) []

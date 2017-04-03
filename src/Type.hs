@@ -20,8 +20,8 @@ data Scheme =
          Type
   deriving (Eq, Ord, Show)
 
-unit :: Type
-unit = TypeSymbol "()"
+nil :: Type
+nil = TypeSymbol "nil"
 
 i1 :: Type
 i1 = TypeSymbol "i1"
@@ -30,7 +30,7 @@ i64 :: Type
 i64 = TypeSymbol "i64"
 
 nth :: Type -> Int -> Type
-nth t idx = nth' t 0
+nth ty idx = nth' ty 0
   where
     nth' :: Type -> Int -> Type
     nth' (TypeArrow a b) pos =
@@ -45,4 +45,4 @@ nth t idx = nth' t 0
       if pos == idx
         then a
         else nth' b (pos + 1)
-    nth' _ _ = t
+    nth' _ _ = ty

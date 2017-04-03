@@ -6,7 +6,7 @@
 module Main where
 
 import Data.Either
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, nub)
 import qualified Data.Map as Map
 
 import Control.Arrow (second)
@@ -38,13 +38,15 @@ data IState = IState
   , tmctx :: [(Syntax.Name, Expression Syntax.Name)]
   , mod :: AST.Module
   , count :: Word
+  , tys :: [Type.Type]
   }
 
 initModule :: AST.Module
 initModule = emptyModule "satori"
 
 initState :: IState
-initState = IState (Environment.empty `extends` ops') [] initModule (0 :: Word)
+initState =
+  IState (Environment.empty `extends` ops') [] initModule (0 :: Word) []
   where
     ops' = map (second (Forall [])) (Map.elems ops)
 
@@ -87,7 +89,8 @@ exec update source = do
       let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
       liftIO $ putStrLn "# Lifted"
       liftIO $ mapM_ (putStrLn . pptop) mono'
-      mod' <- liftIO $ codegen (Main.mod st) mono'
+      let tys' = nub $ Main.tys st ++ types mono'
+      mod' <- liftIO $ codegen (Main.mod st) mono' tys'
       res <- liftIO $ runJIT mod'
       case res of
         Left s -> do
@@ -98,6 +101,7 @@ exec update source = do
                 , Main.count = count'
                 , tmctx = defs'
                 , Main.mod = mod'
+                , Main.tys = tys'
                 }
           when update (put st')
         Right optmod -> do
@@ -107,6 +111,7 @@ exec update source = do
                 , Main.count = count'
                 , tmctx = defs'
                 , Main.mod = optmod
+                , Main.tys = tys'
                 }
           when update (put st')
 

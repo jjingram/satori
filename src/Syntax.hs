@@ -13,7 +13,7 @@ data Top a
            [a]
            (Expression a)
   | Declare Name
-            [Name]
+            [Type]
   | Command (Expression a)
   deriving (Eq, Ord, Show)
 
@@ -75,19 +75,12 @@ definitions (Define name _ expr:rest) = (name, expr) : definitions rest
 definitions (_:rest) = definitions rest
 
 typeOf :: Expression Typed -> Type.Type
-typeOf (Quote (Atom Nil)) = unit
+typeOf (Quote (Atom Nil)) = nil
 typeOf (Quote (Atom (Integer _))) = i64
 typeOf (Quote (Atom (Symbol s))) = TypeSymbol s
 typeOf (Quote (Cons car cdr)) =
   TypeProduct (typeOf (Quote car)) (typeOf (Quote cdr))
 typeOf (Quasiquote x) = typeOfQuasiquote x
-  where
-    typeOfQuasiquote :: Quasisexp Typed -> Type.Type
-    typeOfQuasiquote (Quasiatom x') = typeOf (Quote (Atom x'))
-    typeOfQuasiquote (Quasicons car cdr) =
-      TypeProduct (typeOfQuasiquote car) (typeOfQuasiquote cdr)
-    typeOfQuasiquote (Unquote x') = typeOf x'
-    typeOfQuasiquote (UnquoteSplicing x') = typeOf x'
 typeOf (BinOp _ a _) = typeOf a
 typeOf (Variable (_, t)) = t
 typeOf (Lambda param e) = TypeArrow pty (typeOf e)
@@ -111,6 +104,13 @@ typeOf (Case _ clauses') = types'
         then head types
         else foldr1 TypeSum types
 typeOf (Fix (_, ty) _) = ty
+
+typeOfQuasiquote :: Quasisexp Typed -> Type.Type
+typeOfQuasiquote (Quasiatom x') = typeOf (Quote (Atom x'))
+typeOfQuasiquote (Quasicons car cdr) =
+  TypeProduct (typeOfQuasiquote car) (typeOfQuasiquote cdr)
+typeOfQuasiquote (Unquote x') = typeOf x'
+typeOfQuasiquote (UnquoteSplicing x') = typeOf x'
 
 retty :: Type.Type -> Type.Type
 retty (TypeArrow _ b) = b
@@ -144,3 +144,30 @@ definitions' :: Program Typed -> [(Name, Top Typed)]
 definitions' [] = []
 definitions' (top@(Define (name, _) _ _):rest) = (name, top) : definitions' rest
 definitions' (_:rest) = definitions' rest
+
+types :: Program Typed -> [Type]
+types (Define _ _ expr:rest) = types' expr ++ types rest
+types (Declare _ tys:rest) = tys ++ types rest
+types (Command expr:rest) = types' expr ++ types rest
+
+types' :: Expression Typed -> [Type]
+types' expr =
+  case expr of
+    x@Quote {} -> [typeOf x]
+    (Quasiquote x) -> types'' x
+      where types'' :: Quasisexp Typed -> [Type]
+            types'' x@Quasiatom {} = [typeOfQuasiquote x]
+            types'' (Quasicons car cdr) = types'' car ++ types'' cdr
+            types'' (Unquote x) = types' x
+            types'' (UnquoteSplicing x) = types' x
+    (BinOp _ lhs rhs) -> types' lhs ++ types' rhs
+    x@Variable {} -> [typeOf x]
+    (Lambda params expr) -> map snd params ++ types' expr
+    (Let bindings body) ->
+      (map snd names) ++ (concatMap types' exprs) ++ types' body
+      where (names, exprs) = unzip bindings
+    (If cond tr fl) -> types' cond ++ types' tr ++ types' fl
+    (Call f args) -> types' f ++ concatMap types' args
+    (Case (_, ty) alts) -> [ty] ++ tys ++ (concatMap types' exprs)
+      where (tys, exprs) = unzip alts
+    (Fix _ expr) -> types' expr

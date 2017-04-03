@@ -199,7 +199,7 @@ declare =
   L.parens $ do
     L.reserved "declare"
     (name:types) <- L.parens (many1 L.identifier)
-    return $ Declare name types
+    return $ Declare name (map TypeSymbol types)
 
 definition :: Parser (Top Name)
 definition = try declare <|> define

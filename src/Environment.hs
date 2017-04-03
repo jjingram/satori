@@ -12,20 +12,20 @@ import qualified Data.Map as Map
 import Data.Monoid ()
 
 newtype Environment = TypeEnvironment
-  { types :: Map.Map Name Scheme
+  { tys :: Map.Map Name Scheme
   } deriving (Eq, Show)
 
 empty :: Environment
 empty = TypeEnvironment Map.empty
 
 extend :: Environment -> (Name, Scheme) -> Environment
-extend env (x, s) = env {types = Map.insert x s (types env)}
+extend env (x, s) = env {tys = Map.insert x s (tys env)}
 
 remove :: Environment -> Name -> Environment
 remove (TypeEnvironment env) var = TypeEnvironment (Map.delete var env)
 
 extends :: Environment -> [(Name, Scheme)] -> Environment
-extends env xs = env {types = Map.union (Map.fromList xs) (types env)}
+extends env xs = env {tys = Map.union (Map.fromList xs) (tys env)}
 
 lookup :: Name -> Environment -> Maybe Scheme
 lookup key (TypeEnvironment tys) = Map.lookup key tys
