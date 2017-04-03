@@ -71,7 +71,7 @@ data Op
 
 definitions :: Program Name -> [(Name, Expression Name)]
 definitions [] = []
-definitions (Define name [] expr:rest) = (name, expr) : definitions rest
+definitions (Define name _ expr:rest) = (name, expr) : definitions rest
 definitions (_:rest) = definitions rest
 
 typeOf :: Expression Typed -> Type.Type

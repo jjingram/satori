@@ -152,7 +152,8 @@ instance Pretty a =>
   ppr p (Define name params expr) =
     parens $
     text "define" <+>
-    parens (ppr p name <+> hsep (map (ppr p) params)) $$ nest 1 (ppr p expr)
+    parensIf (not (null params)) (ppr p name <+> hsep (map (ppr p) params)) $$
+    nest 1 (ppr p expr)
   ppr p (Declare name params) =
     parens $ text "declare" <+> ppr p name <+> hsep (map (ppr p) params)
   ppr p (Command expr) = ppr p expr

@@ -30,6 +30,10 @@ main =
         eval "((lambda (x) (let ((y x) (z y)) z)) 0)" `shouldReturn` Right 0
       it "can bind recursive functions" $
         eval
+          "(let ((factorial (lambda (n) (if (eq n 0) 1 (mul n (factorial (sub n 1))))))) (factorial 10))" `shouldReturn`
+        Right 3628800
+      it "can bind recursive functions of more than one variable" $
+        eval
           "(let ((gcd (lambda (x y) (if (eq y 0) x (gcd y (srem x y)))))) (gcd 12 4))" `shouldReturn`
         Right 4
     describe "define" $ do
@@ -43,6 +47,10 @@ main =
         eval
           "(define (factorial n) (if (eq n 0) 1 (mul n (factorial (sub n 1))))) (factorial 5)" `shouldReturn`
         Right 120
+      it "can define recursive functions of more than one variable" $
+        eval
+          "(define (gcd x y) (if (eq y 0) x (gcd y (srem x y)))) (gcd 259 111)" `shouldReturn`
+        Right 37
       it "can define mutually recursive functions" $
         eval
           "(define (even? n) (if (eq n 0) 1 (odd? (sub n 1)))) (define (odd? n) (if (eq n 0) 0 (even? (sub n 1)))) (even? 5)" `shouldReturn`

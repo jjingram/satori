@@ -19,6 +19,7 @@ import LLVM.General.PassManager
 
 import Codegen
 import Curry
+import Desugar
 import Emit
 import Environment
 import Infer
@@ -83,8 +84,9 @@ eval source =
   case parseModule "<string>" source of
     Left err -> return $ Left $ show err
     Right prog -> do
-      let defs = definitions prog
-      let prog' = substitute (Map.fromList defs) prog
+      let desugared = desugar prog
+      let defs = definitions desugared
+      let prog' = substitute (Map.fromList defs) desugared
       let prog'' = map curryTop prog'
       let defs' = definitions prog''
       case inferTop Environment.empty defs' of

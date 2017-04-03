@@ -16,19 +16,20 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Lexer
-                     , Syntax
-                     , Parser
-                     , Curry
-                     , Type
-                     , Environment
-                     , Pretty
-                     , Infer
-                     , Substitute
-                     , Lift
                      , Codegen
+                     , Curry
+                     , Parser
+                     , Desugar
                      , Emit
-                     , JIT
+                     , Environment
                      , Eval
+                     , Infer
+                     , JIT
+                     , Lift
+                     , Pretty
+                     , Substitute
+                     , Syntax
+                     , Type
   build-depends:       base
                      , transformers
                      , llvm-general
