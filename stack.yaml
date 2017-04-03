@@ -25,14 +25,14 @@ packages:
   subdirs:
     - llvm-general
     - llvm-general-pure
-- location: https://github.com/sdiehl/llvm-pp/archive/master.zip
-  extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps: []
 
 # Override default flag values for local packages and extra-deps
-flags: {}
+flags:
+  llvm-general:
+    debug: true
 
 # Extra package databases containing global packages
 extra-package-dbs: []

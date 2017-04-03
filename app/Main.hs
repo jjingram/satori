@@ -23,7 +23,6 @@ import Codegen
 import Curry
 import Emit
 import Environment
-import Fix
 import Infer
 import JIT
 import Lift
@@ -62,15 +61,15 @@ exec :: Bool -> String -> Repl ()
 exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
-  let prog' = map curryTop prog
-  let defs = definitions prog' ++ tmctx st
-  let prog'' = substitute (Map.fromList defs) prog'
-  let fixed = fixTop prog''
-  liftIO $ mapM_ (putStrLn . pptop) fixed
-  let defs' = definitions fixed
+  let defs = definitions prog ++ tmctx st
+  let prog' = substitute (Map.fromList defs) prog
+  liftIO $ mapM_ (putStrLn . pptop) prog'
+  let prog'' = map curryTop prog'
+  liftIO $ mapM_ (putStrLn . pptop) prog''
+  let defs' = definitions prog''
   tyctx' <- hoistError $ inferTop (tyctx st) defs'
   let tyctx'' = tyctx' `mappend` tyctx st
-  let core = constraintsTop tyctx'' fixed
+  let core = constraintsTop tyctx'' prog''
   let corel = lefts core
   let corer = rights core
   if not (null corel)

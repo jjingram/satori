@@ -18,7 +18,6 @@ library
   exposed-modules:     Lexer
                      , Syntax
                      , Parser
-                     , Fix
                      , Curry
                      , Type
                      , Environment

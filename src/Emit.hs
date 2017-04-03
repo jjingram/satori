@@ -1,6 +1,7 @@
 module Emit where
 
 import qualified Data.Map as Map
+import Data.Maybe
 
 import LLVM.General.Analysis
 import LLVM.General.Context
@@ -10,6 +11,7 @@ import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.IntegerPredicate as IP
 import qualified LLVM.General.AST.Type as T
+import qualified LLVM.General.PrettyPrint as PP
 
 import Control.Monad.Except
 
@@ -83,8 +85,8 @@ binops =
     , (Syntax.EQ, eq)
     ]
 
-clambda :: Defs -> Top Typed -> Codegen AST.Operand
-clambda globals (Define (name, ty) params _) = do
+clambda :: Top Typed -> Codegen AST.Operand
+clambda (Define (name, ty) params _) = do
   let name' = read name :: Word
   let free = tail params
   let (_, types) = unzip free
@@ -106,20 +108,14 @@ clambda globals (Define (name, ty) params _) = do
   forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, fty)) -> do
     v <- getvar n
     case v of
-      Nothing ->
-        case Map.lookup name globals of
-          Just _ -> do
-            ptr <-
-              gep (T.ptr (llvmType fty)) var (indices [0, fromIntegral idx'])
-            store ptr closurePtr
-          _ -> error $ "variable not in scope: " ++ name
+      Nothing -> error $ "variable not in scope: " ++ n
       Just v' -> do
         v'' <- load (llvmType fty) v'
         let fty' = llvmType fty
         ptr <- gep (T.ptr fty') var (indices [0, fromIntegral idx'])
         store ptr v''
   return closurePtr
-clambda _ _ = error "not a lambda definition"
+clambda _ = error "not a lambda definition"
 
 cbinding :: Defs -> (Typed, Expression Typed) -> Codegen ()
 cbinding globals ((name, ty), expr) = do
@@ -144,7 +140,7 @@ cgen globals (Variable x) = do
     Just x'' -> load (llvmType t) x''
     Nothing ->
       case Map.lookup name globals of
-        Just def -> clambda globals def
+        Just def -> clambda def
         _ -> error $ "variable not in scope: " ++ name
 cgen _ Lambda {} = error "lambda lifting unsuccessful"
 cgen globals (Let bindings expr) = do
@@ -177,20 +173,58 @@ cgen globals (Call fn args) = do
   freePtrPtr <- gep Codegen.unit closurePtr (indices [0, 1])
   freePtr <- load Codegen.unit freePtrPtr
   call fnPtr [freePtr, carg] (llvmType ty)
-cgen globals (Fix _ e) = cgen globals e
+cgen globals (Fix (n, _) (Variable (n', _))) = do
+  let (Define (name, ty) params _) =
+        fromMaybe
+          (error $ "variable not in scope: " ++ name)
+          (Map.lookup n' globals)
+  let name' = read name :: Word
+  let free = tail params
+  let (_, types) = unzip free
+  let (_, paramType) = head params
+  let paramType' = llvmType paramType
+  let (TypeArrow _ rty) = ty
+  let rty' = llvmType rty
+  let freeType = struct (map llvmType types)
+  let fnType = func rty' [Codegen.unit, paramType']
+  let fnPtrType = T.ptr fnType
+  let closureType = struct [fnPtrType, Codegen.unit]
+  closurePtr <- malloc closureType 2
+  closurePtrPtr <- malloc (T.ptr closureType) 1
+  _ <- store closurePtrPtr closurePtr
+  -- Tie the recursive knot.
+  assign n closurePtrPtr
+  fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
+  _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
+  freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
+  var <- malloc freeType (fromIntegral (length types))
+  freeBitCast <- bitCast Codegen.unit var
+  _ <- store freePtrPtr freeBitCast
+  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n'', fty)) -> do
+    v <- getvar n''
+    case v of
+      Nothing -> error $ "variable not in scope: " ++ n
+      Just v' -> do
+        v'' <- load (llvmType fty) v'
+        let fty' = llvmType fty
+        ptr <- gep (T.ptr fty') var (indices [0, fromIntegral idx'])
+        store ptr v''
+  return closurePtr
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
 
 codegen :: AST.Module -> Program Typed -> IO AST.Module
 codegen m fns =
-  withContext $ \context ->
+  withContext $ \context
+    --liftIO $ putStrLn $ PP.showPretty newast
+   -> do
     liftError $
-    withModuleFromAST context newast $ \m' -> do
-      llstr <- moduleLLVMAssembly m'
-      putStrLn llstr
-      liftError $ verify m'
-      return newast
+      withModuleFromAST context newast $ \m' -> do
+        llstr <- moduleLLVMAssembly m'
+        putStrLn llstr
+        liftError $ verify m'
+        return newast
   where
     modn = do
       declare (T.ptr T.i8) "malloc" [(T.i32, AST.Name "size")]

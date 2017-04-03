@@ -130,9 +130,9 @@ lambdaLift (Case e clauses) = do
   bodies' <- mapM lambdaLift bodies
   let clauses' = zip bindings bodies'
   return $ Case e' clauses'
-lambdaLift (Fix x e) = do
+lambdaLift (Fix name e) = do
   e' <- lambdaLift e
-  return $ Fix x e'
+  return $ Fix name e'
 
 lambdaLiftTop :: Word -> [Typed] -> Top Typed -> (Program Typed, Word)
 lambdaLiftTop count globals top =

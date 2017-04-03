@@ -5,8 +5,7 @@ import Prelude hiding (curry)
 import Syntax
 
 curryTop :: Top Name -> Top Name
-curryTop (Define name formals body) =
-  Define name [] (curry (Lambda formals body))
+curryTop (Define name _ body) = Define name [] (curry body)
 curryTop (Declare name types) = Declare name types
 curryTop (Command expr) = Command (curry expr)
 

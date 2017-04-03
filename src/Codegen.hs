@@ -82,14 +82,19 @@ llvmType (TypeVariable _) = error "type variable"
 llvmType t@(TypeArrow _ _) = closure fnPtrType
   where
     types = llvmType' t
-    ty = last types
-    tys = Codegen.unit : init types
+    ty = llvmRetty $ tail types
+    tys = [Codegen.unit, head types]
     fnPtrType = T.ptr $ func ty tys
 llvmType t@(TypeProduct _ _) = T.StructureType False (llvmType' t)
 llvmType (TypeSum _ _) = T.StructureType False [tag, datum]
   where
     tag = T.i64
     datum = T.ptr $ T.StructureType False []
+
+llvmRetty :: [T.Type] -> T.Type
+llvmRetty [] = Codegen.unit
+llvmRetty [x] = x
+llvmRetty (x:xs) = closure $ T.ptr $ func (llvmRetty xs) [Codegen.unit, x]
 
 llvmType' :: Type.Type -> [T.Type]
 llvmType' s@(TypeSymbol _) = [llvmType s]

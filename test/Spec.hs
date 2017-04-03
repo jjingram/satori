@@ -28,11 +28,17 @@ main =
         eval "((lambda (x) (let ((y x)) y)) 0)" `shouldReturn` Right 0
       it "can bind variables sequentially" $
         eval "((lambda (x) (let ((y x) (z y)) z)) 0)" `shouldReturn` Right 0
+      it "can bind recursive functions" $
+        eval
+          "(let ((gcd (lambda (x y) (if (eq y 0) x (gcd y (srem x y)))))) (gcd 12 4))" `shouldReturn`
+        Right 4
     describe "define" $ do
       it "can define constants" $
         eval "(define (x) 0) (x)" `shouldReturn` Right 0
       it "can define functions" $
         eval "(define (id x) x) (id 0)" `shouldReturn` Right 0
+      it "can define functions with multiple arguments" $
+        eval "(define (foo x y) x) (foo 0 1)" `shouldReturn` Right 0
       it "can define recursive functions" $
         eval
           "(define (factorial n) (if (eq n 0) 1 (mul n (factorial (sub n 1))))) (factorial 5)" `shouldReturn`

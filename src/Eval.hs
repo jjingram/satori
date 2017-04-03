@@ -21,7 +21,6 @@ import Codegen
 import Curry
 import Emit
 import Environment
-import Fix
 import Infer
 import Lift
 import Parser
@@ -84,17 +83,21 @@ eval source =
   case parseModule "<string>" source of
     Left err -> return $ Left $ show err
     Right prog -> do
-      let prog' = map curryTop prog
-      let defs = definitions prog'
-      let prog'' = substitute (Map.fromList defs) prog'
-      let fixed = fixTop prog''
-      let defs' = definitions fixed
+      let defs = definitions prog
+      let prog' = substitute (Map.fromList defs) prog
+      let prog'' = map curryTop prog'
+      let defs' = definitions prog''
       case inferTop Environment.empty defs' of
         Left err -> return $ Left $ show err
         Right env -> do
-          let core = rights $ constraintsTop env fixed
-          let mono = filterPolymorphic core
-          let (mono', _) = lambdaLiftProgram 0 [] mono
-          mod' <-
-            Eval.codegen (AST.defaultModule {AST.moduleName = "test"}) mono'
-          return $ runJIT mod'
+          let core = constraintsTop env prog''
+          let corel = lefts core
+          let corer = rights core
+          if not (null corel)
+            then return $ Left $ concatMap show corel
+            else do
+              let mono = filterPolymorphic corer
+              let (mono', _) = lambdaLiftProgram 0 [] mono
+              mod' <-
+                Eval.codegen (AST.defaultModule {AST.moduleName = "test"}) mono'
+              return $ runJIT mod'
