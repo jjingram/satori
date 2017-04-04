@@ -46,7 +46,12 @@ initModule = emptyModule "satori"
 
 initState :: IState
 initState =
-  IState (Environment.empty `extends` ops') [] initModule (0 :: Word) []
+  IState
+    (Environment.empty `extends` ops')
+    []
+    initModule
+    (0 :: Word)
+    typeSymbols
   where
     ops' = map (second (Forall [])) (Map.elems ops)
 

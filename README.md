@@ -5,7 +5,7 @@
 # Examples
 ```lisp
 (define (length lst)
-  (case lst
+  (case (x (car lst))
     (nil 0)
-    (cons (add 1 (length (cdr lst))))))
+    (t (add 1 (length (cdr lst))))))
 ```

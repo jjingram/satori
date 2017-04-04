@@ -35,7 +35,7 @@ data Expression a
        (Expression a)
   | Call (Expression a)
          [Expression a]
-  | Case a
+  | Case (a, Expression a)
          [(Type, Expression a)]
   | Fix a
         (Expression a)
@@ -109,14 +109,14 @@ typeOf (If _ tr fl) =
     ttr = typeOf tr
     tfl = typeOf fl
 typeOf (Call f _) = retty $ typeOf f
-typeOf (Case _ clauses') = types'
+typeOf (Case _ clauses') = tys'
   where
     (_, bodies) = unzip clauses'
-    types = map typeOf bodies
-    types' =
-      if and $ zipWith (==) types (tail types)
-        then head types
-        else foldr1 TypeSum types
+    tys = map typeOf bodies
+    tys' =
+      if and $ zipWith (==) tys (tail tys)
+        then head tys
+        else foldr1 TypeSum tys
 typeOf (Fix (_, ty) _) = ty
 
 typeOfQuasiquote :: Quasisexp Typed -> Type.Type
@@ -171,18 +171,18 @@ types' expr =
     x@Quote {} -> [typeOf x]
     (Quasiquote x) -> types'' x
       where types'' :: Quasisexp Typed -> [Type]
-            types'' x@Quasiatom {} = [typeOfQuasiquote x]
+            types'' x'@Quasiatom {} = [typeOfQuasiquote x']
             types'' (Quasicons car cdr) = types'' car ++ types'' cdr
-            types'' (Unquote x) = types' x
-            types'' (UnquoteSplicing x) = types' x
+            types'' (Unquote x') = types' x'
+            types'' (UnquoteSplicing x') = types' x'
     (BinOp _ lhs rhs) -> types' lhs ++ types' rhs
     x@Variable {} -> [typeOf x]
-    (Lambda params expr) -> map snd params ++ types' expr
+    (Lambda params body) -> map snd params ++ types' body
     (Let bindings body) ->
-      (map snd names) ++ (concatMap types' exprs) ++ types' body
+      map snd names ++ concatMap types' exprs ++ types' body
       where (names, exprs) = unzip bindings
     (If cond tr fl) -> types' cond ++ types' tr ++ types' fl
     (Call f args) -> types' f ++ concatMap types' args
-    (Case (_, ty) alts) -> [ty] ++ tys ++ (concatMap types' exprs)
+    (Case ((_, ty), _) alts) -> [ty] ++ tys ++ concatMap types' exprs
       where (tys, exprs) = unzip alts
-    (Fix _ expr) -> types' expr
+    (Fix _ x) -> types' x

@@ -102,10 +102,10 @@ eval source =
             else do
               let mono = filterPolymorphic corer
               let (mono', _) = lambdaLiftProgram 0 [] mono
-              let tys = nub $ types mono'
+              let tys' = nub $ typeSymbols ++ types mono'
               mod' <-
                 Eval.codegen
                   (AST.defaultModule {AST.moduleName = "test"})
                   mono'
-                  tys
+                  tys'
               return $ runJIT mod'

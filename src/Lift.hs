@@ -63,10 +63,11 @@ convert env fvs expr =
     (If cond tr fl) ->
       If (convert env fvs cond) (convert env fvs tr) (convert env fvs fl)
     (Call e1 e2) -> Call (convert env fvs e1) (map (convert env fvs) e2)
-    (Case x clauses) -> Case x clauses'
-      where (types, bodies) = unzip clauses
+    (Case (x, e) clauses) -> Case (x, e') clauses'
+      where e' = convert env fvs e
+            (tys, bodies) = unzip clauses
             bodies' = map (convert env fvs) bodies
-            clauses' = zip types bodies'
+            clauses' = zip tys bodies'
     (Fix name e) -> Fix name (convert env fvs e)
 
 type Lift a = WriterT [Top Typed] (State Word) a
@@ -122,11 +123,12 @@ lambdaLift (Call e1 e2) = do
   e1' <- lambdaLift e1
   e2' <- mapM lambdaLift e2
   return $ Call e1' e2'
-lambdaLift (Case x clauses) = do
-  let (types, bodies) = unzip clauses
+lambdaLift (Case (x, e) clauses) = do
+  e' <- lambdaLift e
+  let (tys, bodies) = unzip clauses
   bodies' <- mapM lambdaLift bodies
-  let clauses' = zip types bodies'
-  return $ Case x clauses'
+  let clauses' = zip tys bodies'
+  return $ Case (x, e') clauses'
 lambdaLift (Fix name e) = do
   e' <- lambdaLift e
   return $ Fix name e'

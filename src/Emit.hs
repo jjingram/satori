@@ -158,8 +158,7 @@ cgen tys globals (BinOp op a b) = do
   _ <-
     store
       resPtrTag
-      (constant $
-       C.Int 64 (fromIntegral . fromJust $ TypeSymbol "i64" `elemIndex` tys))
+      (constant $ C.Int 64 (fromIntegral . fromJust $ rty `elemIndex` tys))
   resPtrDatum <- gep (T.ptr Codegen.unit) resSumPtr (indices [0, 1])
   resPtrDatumBitCast <- bitCast (T.ptr $ T.ptr rty') resPtrDatum
   _ <- store resPtrDatumBitCast resPtr
@@ -214,15 +213,15 @@ cgen tys globals (Call fn args) = do
   freePtrPtr <- gep Codegen.unit closurePtr (indices [0, 1])
   freePtr <- load Codegen.unit freePtrPtr
   call fnPtr [freePtr, carg] sumType
-cgen tys globals (Case x@(name, ty) clauses) = do
+cgen tys globals (Case ((x, _), e) clauses) = do
   let (ts, exprs) = unzip clauses
   blks <- mapM (\(TypeSymbol s) -> addBlock ("case." ++ s)) ts
   merge <- addBlock "case.default"
-  cx <- cgen tys globals (Variable x)
-  tagPtr <- gep (T.ptr T.i64) cx (indices [0, 0])
+  ce <- cgen tys globals e
+  assign x ce
+  tagPtr <- gep (T.ptr T.i64) ce (indices [0, 0])
   tag <- load T.i64 tagPtr
   tag' <- instr T.i32 $ AST.Trunc tag T.i32 []
-  datum <- gep (T.ptr sumType) cx (indices [0, 1])
   let idxs = map (C.Int 32 . fromIntegral . fromJust . flip elemIndex tys) ts
   let dests = zip idxs blks
   retptrptr <- malloc sumType 1
@@ -237,8 +236,7 @@ cgen tys globals (Case x@(name, ty) clauses) = do
        _ <- store retptrptr expr'
        br merge)
   _ <- setBlock merge
-  retptr <- load sumType retptrptr
-  return retptr
+  load sumType retptrptr
 cgen tys globals (Fix (n, _) (Variable (n', _))) = do
   let (Define (name, ty) params _) =
         fromMaybe

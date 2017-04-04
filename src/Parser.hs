@@ -128,14 +128,18 @@ case' :: Parser (Expression Name)
 case' =
   L.parens $ do
     L.reserved "case"
-    var <- L.identifier
+    (var, expr) <-
+      L.parens $ do
+        v <- L.identifier
+        e <- expression
+        return (v, e)
     clauses <-
       many1
         (L.parens $ do
            ty <- L.identifier
            form <- expression
            return (TypeSymbol ty, form))
-    return $ Case var clauses
+    return $ Case (var, expr) clauses
 
 expression :: Parser (Expression Name)
 expression =

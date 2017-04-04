@@ -135,8 +135,9 @@ substituteType sub expr =
         (substituteType sub tr)
         (substituteType sub fl)
     Call f args -> Call (substituteType sub f) (map (substituteType sub) args)
-    Case x clauses -> Case (name, ty') clauses'
-      where (name, ty) = x
+    Case x clauses -> Case ((name, ty'), e') clauses'
+      where ((name, ty), e) = x
+            e' = substituteType sub e
             ty' = apply sub ty
             (xs, es) = unzip clauses
             es' = map (substituteType sub) es
@@ -227,7 +228,7 @@ infer expr =
       (t2, c2, e2') <- infer e2
       tv <- fresh
       let u1 = t1 `TypeArrow` (t2 `TypeArrow` tv)
-          u2 = snd $ ops Map.! op
+          u2 = snd $ Syntax.ops Map.! op
       return (tv, c1 ++ c2 ++ [(u1, u2)], BinOp op e1' e2')
     Variable x -> do
       t <- lookupEnvironment x
@@ -258,16 +259,15 @@ infer expr =
       (t2, c2, tr') <- infer tr
       (t3, c3, fl') <- infer fl
       return (t2, c1 ++ c2 ++ c3 ++ [(t1, i1), (t2, t3)], If cond' tr' fl')
-    Case x alts -> do
+    Case (x, e) alts -> do
+      (t, c, e') <- infer e
       xs <-
         mapM (\(ty, body) -> inEnvironment (x, Forall [] ty) (infer body)) alts
       let (ts, cs, bodies') = unzip3 xs
-      let (types', _) = unzip alts
-      let alts' = zip types' bodies'
-      let t = foldr1 TypeSum ts
-      t' <- lookupEnvironment x
-      let xt = foldr1 TypeSum types'
-      return (t, concat cs ++ [(xt, t')], Case (x, xt) alts')
+      let (tys', _) = unzip alts
+      let alts' = zip tys' bodies'
+      let rty = foldr1 TypeSum ts
+      return (rty, c ++ concat cs, Case ((x, t), e') alts')
     Fix name e -> do
       tv <- fresh
       (ty, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
