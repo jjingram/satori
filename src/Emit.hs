@@ -138,18 +138,20 @@ cgen tys _ (Quote (Atom (Integer n))) = do
 cgen tys globals (BinOp op a b) = do
   let f = binops Map.! op
   let (_, ty) = ops Map.! op
-  let (TypeArrow _ (TypeArrow _ rty)) = ty
+  let (TypeArrow ta (TypeArrow tb rty)) = ty
   let rty' = llvmType rty
   ca <- cgen tys globals a
+  let ta' = llvmType ta
   cb <- cgen tys globals b
+  let tb' = llvmType tb
   caDatum <- gep (T.ptr Codegen.unit) ca (indices [0, 1])
-  caBitCast <- bitCast (T.ptr $ T.ptr T.i64) caDatum
-  caPtr <- load (T.ptr T.i64) caBitCast
-  lhs <- load T.i64 caPtr
+  caBitCast <- bitCast (T.ptr $ T.ptr ta') caDatum
+  caPtr <- load (T.ptr ta') caBitCast
+  lhs <- load ta' caPtr
   cbDatum <- gep (T.ptr Codegen.unit) cb (indices [0, 1])
-  cbBitCast <- bitCast (T.ptr $ T.ptr T.i64) cbDatum
-  cbPtr <- load (T.ptr T.i64) cbBitCast
-  rhs <- load T.i64 cbPtr
+  cbBitCast <- bitCast (T.ptr $ T.ptr tb') cbDatum
+  cbPtr <- load (T.ptr tb') cbBitCast
+  rhs <- load tb' cbPtr
   res <- f lhs rhs rty'
   resPtr <- malloc rty' 1
   _ <- store resPtr res
