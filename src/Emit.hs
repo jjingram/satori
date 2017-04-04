@@ -81,8 +81,8 @@ binops =
     , (Syntax.EQ, eq)
     ]
 
-clambda :: Top Typed -> Codegen AST.Operand
-clambda (Define (name, ty) params _) = do
+clambda :: [Type] -> Top Typed -> Codegen AST.Operand
+clambda tys (Define (name, ty) params _) = do
   let name' = read name :: Word
   let free = tail params
   let freeType = struct (replicate (length free) sumType)
@@ -103,9 +103,17 @@ clambda (Define (name, ty) params _) = do
       Just v' -> do
         ptr <- gep (T.ptr sumType) var (indices [0, fromIntegral idx'])
         store ptr v'
-  closurePtrBitCast <- bitCast sumType closurePtr
-  return closurePtrBitCast
-clambda _ = error "not a lambda definition"
+  closureSum <- malloc (struct [T.i64, Codegen.unit]) 2
+  closureTag <- gep (T.ptr T.i64) closureSum (indices [0, 0])
+  _ <-
+    store
+      closureTag
+      (constant $ C.Int 64 (fromIntegral . fromJust $ ty `elemIndex` tys))
+  closureDatum <- gep (T.ptr Codegen.unit) closureSum (indices [0, 1])
+  closurePtrBitCast <- bitCast Codegen.unit closurePtr
+  _ <- store closureDatum closurePtrBitCast
+  return closureSum
+clambda _ _ = error "not a lambda definition"
 
 cbinding :: [Type] -> Defs -> (Typed, Expression Typed) -> Codegen ()
 cbinding tys globals ((name, _), expr) = do
@@ -156,14 +164,14 @@ cgen tys globals (BinOp op a b) = do
   resPtrDatumBitCast <- bitCast (T.ptr $ T.ptr rty') resPtrDatum
   _ <- store resPtrDatumBitCast resPtr
   return resSumPtr
-cgen _ globals (Variable x) = do
+cgen tys globals (Variable x) = do
   let (name, _) = x
   x' <- getvar name
   case x' of
     Just x'' -> return x''
     Nothing ->
       case Map.lookup name globals of
-        Just def -> clambda def
+        Just def -> clambda tys def
         _ -> error $ "variable not in scope: " ++ name
 cgen _ _ Lambda {} = error "lambda lifting unsuccessful"
 cgen tys globals (Let bindings expr) = do
@@ -193,12 +201,17 @@ cgen tys globals (If cond tr fl) = do
 cgen tys globals (Call fn args) = do
   let arg = head args
   carg <- cgen tys globals arg
-  closurePtr <- cgen tys globals fn
-  closureBitCast <-
-    bitCast (closure $ T.ptr $ func sumType [Codegen.unit, sumType]) closurePtr
-  fnPtrPtr <- gep Codegen.unit closureBitCast (indices [0, 0])
+  closureSum <- cgen tys globals fn
+  closureDatum <- gep (T.ptr Codegen.unit) closureSum (indices [0, 1])
+  closurePtrPtr <-
+    bitCast
+      (T.ptr $ closure $ T.ptr $ func sumType [Codegen.unit, sumType])
+      closureDatum
+  closurePtr <-
+    load (closure $ func sumType [Codegen.unit, sumType]) closurePtrPtr
+  fnPtrPtr <- gep Codegen.unit closurePtr (indices [0, 0])
   fnPtr <- load Codegen.unit fnPtrPtr
-  freePtrPtr <- gep Codegen.unit closureBitCast (indices [0, 1])
+  freePtrPtr <- gep Codegen.unit closurePtr (indices [0, 1])
   freePtr <- load Codegen.unit freePtrPtr
   call fnPtr [freePtr, carg] sumType
 cgen tys globals (Case x@(name, ty) clauses) = do
@@ -226,8 +239,8 @@ cgen tys globals (Case x@(name, ty) clauses) = do
   _ <- setBlock merge
   retptr <- load sumType retptrptr
   return retptr
-cgen _ globals (Fix (n, _) (Variable (n', _))) = do
-  let (Define (name, _) params _) =
+cgen tys globals (Fix (n, _) (Variable (n', _))) = do
+  let (Define (name, ty) params _) =
         fromMaybe
           (error $ "variable not in scope: " ++ name)
           (Map.lookup n' globals)
@@ -238,8 +251,16 @@ cgen _ globals (Fix (n, _) (Variable (n', _))) = do
   let fnPtrType = T.ptr fnType
   let closureType = struct [fnPtrType, Codegen.unit]
   closurePtr <- malloc closureType 2
-  closurePtrBitCast <- bitCast sumType closurePtr
-  assign n closurePtrBitCast
+  closureSum <- malloc (struct [T.i64, Codegen.unit]) 2
+  closureTag <- gep (T.ptr T.i64) closureSum (indices [0, 0])
+  _ <-
+    store
+      closureTag
+      (constant $ C.Int 64 (fromIntegral . fromJust $ ty `elemIndex` tys))
+  closureDatum <- gep (T.ptr Codegen.unit) closureSum (indices [0, 1])
+  closurePtrDatum <- bitCast Codegen.unit closurePtr
+  _ <- store closureDatum closurePtrDatum
+  assign n closureSum
   fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
   _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
   freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
@@ -253,7 +274,7 @@ cgen _ globals (Fix (n, _) (Variable (n', _))) = do
       Just v' -> do
         ptr <- gep (T.ptr sumType) var (indices [0, fromIntegral idx'])
         store ptr v'
-  return closurePtrBitCast
+  return closureSum
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
