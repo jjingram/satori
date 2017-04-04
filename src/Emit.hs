@@ -206,29 +206,25 @@ cgen tys globals (Case x@(name, ty) clauses) = do
   blks <- mapM (\(TypeSymbol s) -> addBlock ("case." ++ s)) ts
   merge <- addBlock "case.default"
   cx <- cgen tys globals (Variable x)
-  tag <- gep (T.ptr $ llvmType ty) cx (indices [0, 0])
+  tagPtr <- gep (T.ptr T.i64) cx (indices [0, 0])
+  tag <- load T.i64 tagPtr
   tag' <- instr T.i32 $ AST.Trunc tag T.i32 []
-  datum <- gep Codegen.unit cx (indices [0, 1])
+  datum <- gep (T.ptr sumType) cx (indices [0, 1])
   let idxs = map (C.Int 32 . fromIntegral . fromJust . flip elemIndex tys) ts
   let dests = zip idxs blks
-  retptr <- malloc (struct [T.i64, Codegen.unit]) 2
+  retptrptr <- malloc sumType 1
   _ <- switch tag' merge dests
   _ <-
     forM_ (zip3 ts exprs blks) $
     (\(t, expr, block) -> do
        _ <- setBlock block
-       datumBitCast <- bitCast (T.ptr $ llvmType t) datum
-       assign name datumBitCast
        expr' <- cgen tys globals expr
-       exprBitCast <- bitCast Codegen.unit expr'
-       retptrTag <- gep Codegen.unit retptr (indices [0, 0])
-       retptrDatum <- gep Codegen.unit retptr (indices [0, 1])
        let idx = fromJust $ t `elemIndex` tys
        let idx' = constant $ C.Int 64 (fromIntegral idx)
-       _ <- store retptrTag idx'
-       _ <- store retptrDatum exprBitCast
+       _ <- store retptrptr expr'
        br merge)
   _ <- setBlock merge
+  retptr <- load sumType retptrptr
   return retptr
 cgen _ globals (Fix (n, _) (Variable (n', _))) = do
   let (Define (name, _) params _) =

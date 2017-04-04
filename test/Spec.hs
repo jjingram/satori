@@ -60,3 +60,9 @@ main =
         eval "(if (eq 0 0) 0 1)" `shouldReturn` Right 0
       it "can choose the false branch" $
         eval "(if (eq 0 1) 0 1)" `shouldReturn` Right 1
+    describe "case" $ do
+      it "can choose a branch based on a variable's type" $
+        eval "((lambda (x) (case x (i64 0))) 1)" `shouldReturn` Right 0
+      it "can choose a branch among many" $
+        eval "(let ((x (eq 0 1))) (case x (i64 0) (i1 1)))" `shouldReturn`
+        Right 1
