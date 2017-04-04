@@ -1,5 +1,7 @@
 module Syntax where
 
+import qualified Data.Map as Map
+
 import Type
 
 type Name = String
@@ -68,6 +70,18 @@ data Op
   | SLT
   | EQ
   deriving (Eq, Ord, Show)
+
+ops :: Map.Map Op (Name, Type)
+ops =
+  Map.fromList
+    [ (Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Mul, ("mul", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (Sub, ("sub", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (SDiv, ("sdiv", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (SRem, ("srem", i64 `TypeArrow` (i64 `TypeArrow` i64)))
+    , (SLT, ("slt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
+    , (Syntax.EQ, ("eq", i64 `TypeArrow` (i64 `TypeArrow` i1)))
+    ]
 
 definitions :: Program Name -> [(Name, Expression Name)]
 definitions [] = []

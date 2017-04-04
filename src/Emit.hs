@@ -103,7 +103,8 @@ clambda (Define (name, ty) params _) = do
       Just v' -> do
         ptr <- gep (T.ptr sumType) var (indices [0, fromIntegral idx'])
         store ptr v'
-  return closurePtr
+  closurePtrBitCast <- bitCast sumType closurePtr
+  return closurePtrBitCast
 clambda _ = error "not a lambda definition"
 
 cbinding :: [Type] -> Defs -> (Typed, Expression Typed) -> Codegen ()
@@ -128,6 +129,9 @@ cgen tys _ (Quote (Atom (Integer n))) = do
   return resPtr
 cgen tys globals (BinOp op a b) = do
   let f = binops Map.! op
+  let (_, ty) = ops Map.! op
+  let (TypeArrow _ (TypeArrow _ rty)) = ty
+  let rty' = llvmType rty
   ca <- cgen tys globals a
   cb <- cgen tys globals b
   caDatum <- gep (T.ptr Codegen.unit) ca (indices [0, 1])
@@ -138,8 +142,8 @@ cgen tys globals (BinOp op a b) = do
   cbBitCast <- bitCast (T.ptr $ T.ptr T.i64) cbDatum
   cbPtr <- load (T.ptr T.i64) cbBitCast
   rhs <- load T.i64 cbPtr
-  res <- f lhs rhs T.i64
-  resPtr <- malloc T.i64 1
+  res <- f lhs rhs rty'
+  resPtr <- malloc rty' 1
   _ <- store resPtr res
   resSumPtr <- malloc (struct [T.i64, Codegen.unit]) 2
   resPtrTag <- gep (T.ptr T.i64) resSumPtr (indices [0, 0])
@@ -149,7 +153,7 @@ cgen tys globals (BinOp op a b) = do
       (constant $
        C.Int 64 (fromIntegral . fromJust $ TypeSymbol "i64" `elemIndex` tys))
   resPtrDatum <- gep (T.ptr Codegen.unit) resSumPtr (indices [0, 1])
-  resPtrDatumBitCast <- bitCast (T.ptr $ T.ptr T.i64) resPtrDatum
+  resPtrDatumBitCast <- bitCast (T.ptr $ T.ptr rty') resPtrDatum
   _ <- store resPtrDatumBitCast resPtr
   return resSumPtr
 cgen _ globals (Variable x) = do
@@ -169,8 +173,12 @@ cgen tys globals (If cond tr fl) = do
   ifthen <- addBlock "if.then"
   ifelse <- addBlock "if.else"
   ifexit <- addBlock "if.exit"
-  cond' <- cgen tys globals cond
-  test <- icmp IP.NE false cond' T.i64
+  condSum <- cgen tys globals cond
+  condDatumPtr <- gep (T.ptr Codegen.unit) condSum (indices [0, 1])
+  condDatum <- load Codegen.unit condDatumPtr
+  condDatumBitCast <- bitCast (T.ptr T.i1) condDatum
+  cond' <- load T.i1 condDatumBitCast
+  test <- icmp IP.NE false cond' T.i1
   _ <- cbr test ifthen ifelse
   _ <- setBlock ifthen
   trval <- cgen tys globals tr
@@ -181,7 +189,7 @@ cgen tys globals (If cond tr fl) = do
   _ <- br ifexit
   ifelse' <- getBlock
   _ <- setBlock ifexit
-  phi T.i64 [(trval, ifthen'), (flval, ifelse')]
+  phi sumType [(trval, ifthen'), (flval, ifelse')]
 cgen tys globals (Call fn args) = do
   let arg = head args
   carg <- cgen tys globals arg
@@ -234,24 +242,22 @@ cgen _ globals (Fix (n, _) (Variable (n', _))) = do
   let fnPtrType = T.ptr fnType
   let closureType = struct [fnPtrType, Codegen.unit]
   closurePtr <- malloc closureType 2
-  closurePtrPtr <- malloc (T.ptr closureType) 1
-  _ <- store closurePtrPtr closurePtr
-  -- Tie the recursive knot.
-  assign n closurePtrPtr
+  closurePtrBitCast <- bitCast sumType closurePtr
+  assign n closurePtrBitCast
   fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
   _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
   freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
   var <- malloc freeType (fromIntegral (length free))
   freeBitCast <- bitCast Codegen.unit var
   _ <- store freePtrPtr freeBitCast
-  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n'', _)) -> do
-    v <- getvar n''
+  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, _)) -> do
+    v <- getvar n
     case v of
       Nothing -> error $ "variable not in scope: " ++ n
       Just v' -> do
-        ptr <- gep sumType var (indices [0, fromIntegral idx'])
+        ptr <- gep (T.ptr sumType) var (indices [0, fromIntegral idx'])
         store ptr v'
-  return closurePtr
+  return closurePtrBitCast
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return

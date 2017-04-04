@@ -209,18 +209,6 @@ generalize env t = Forall as t
   where
     as = Set.toList $ ftv t `Set.difference` ftv env
 
-ops :: Map.Map Op (Name, Type)
-ops =
-  Map.fromList
-    [ (Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (Mul, ("mul", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (Sub, ("sub", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (SDiv, ("sdiv", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (SRem, ("srem", i64 `TypeArrow` (i64 `TypeArrow` i64)))
-    , (SLT, ("slt", i64 `TypeArrow` (i64 `TypeArrow` i1)))
-    , (Syntax.EQ, ("eq", i64 `TypeArrow` (i64 `TypeArrow` i1)))
-    ]
-
 infer :: Expression Name -> Infer (Type, [Constraint], Expression Typed)
 infer expr =
   case expr of

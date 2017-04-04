@@ -76,6 +76,7 @@ declare ty label argtys =
 llvmType :: Type.Type -> T.Type
 llvmType (TypeSymbol "()") = T.StructureType False []
 llvmType (TypeSymbol "nil") = T.StructureType False []
+llvmType (TypeSymbol "i1") = T.i1
 llvmType (TypeSymbol "i64") = T.i64
 llvmType (TypeSymbol s) = error $ "unknown type: " ++ s
 llvmType (TypeVariable _) = error "type variable"
