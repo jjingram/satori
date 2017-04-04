@@ -93,7 +93,7 @@ llvmType (TypeSum _ _) = T.StructureType False [tag, datum]
 
 llvmRetty :: [T.Type] -> T.Type
 llvmRetty [] = Codegen.unit
-llvmRetty [x] = x
+llvmRetty [x] = sumType
 llvmRetty (x:xs) = closure $ T.ptr $ func (llvmRetty xs) [Codegen.unit, x]
 
 llvmType' :: Type.Type -> [T.Type]
@@ -114,6 +114,9 @@ struct = T.StructureType False
 
 closure :: AST.Type -> AST.Type
 closure fnPtrType = T.ptr $ struct [fnPtrType, Codegen.unit]
+
+sumType :: AST.Type
+sumType = T.ptr $ struct [T.i64, Codegen.unit]
 
 indices :: [Integer] -> [Operand]
 indices = map (constant . C.Int 32)

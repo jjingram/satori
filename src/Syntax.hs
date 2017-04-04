@@ -146,6 +146,7 @@ definitions' (top@(Define (name, _) _ _):rest) = (name, top) : definitions' rest
 definitions' (_:rest) = definitions' rest
 
 types :: Program Typed -> [Type]
+types [] = []
 types (Define _ _ expr:rest) = types' expr ++ types rest
 types (Declare _ tys:rest) = tys ++ types rest
 types (Command expr:rest) = types' expr ++ types rest
