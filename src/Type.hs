@@ -30,7 +30,7 @@ i64 :: Type
 i64 = TypeSymbol "i64"
 
 typeSymbols :: [Type]
-typeSymbols = [nil, i1, i64]
+typeSymbols = [nil, TypeSymbol "t", i1, i64]
 
 nth :: Type -> Int -> Type
 nth ty idx = nth' ty 0

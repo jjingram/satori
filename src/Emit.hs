@@ -12,7 +12,6 @@ import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.IntegerPredicate as IP
 import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.PrettyPrint as PP
 
 import Control.Monad.Except
 
@@ -29,7 +28,7 @@ toSig :: [Type] -> [(AST.Type, AST.Name)]
 toSig = map (\(TypeSymbol x) -> (llvmType (TypeSymbol x), AST.Name x))
 
 codegenTop :: [Type] -> Defs -> Top Typed -> LLVM ()
-codegenTop tys globals (Define (name, ty) params body) =
+codegenTop tys globals (Define (name, _) params body) =
   define
     sumType
     name'
@@ -81,8 +80,8 @@ binops =
     , (Syntax.EQ, eq)
     ]
 
-clambda :: [Type] -> Top Typed -> Codegen AST.Operand
-clambda tys (Define (name, ty) params _) = do
+clambda :: Maybe Name -> [Type] -> Top Typed -> Codegen AST.Operand
+clambda var tys (Define (name, ty) params _) = do
   let name' = read name :: Word
   let free = tail params
   let freeType = struct (replicate (length free) sumType)
@@ -90,20 +89,8 @@ clambda tys (Define (name, ty) params _) = do
   let fnPtrType = T.ptr fnType
   let closureType = struct [fnPtrType, Codegen.unit]
   closurePtr <- malloc closureType 2
-  fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
-  _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
-  freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
-  var <- malloc freeType (fromIntegral (length free))
-  freeBitCast <- bitCast Codegen.unit var
-  _ <- store freePtrPtr freeBitCast
-  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, _)) -> do
-    v <- getvar n
-    case v of
-      Nothing -> error $ "variable not in scope: " ++ n
-      Just v' -> do
-        ptr <- gep (T.ptr sumType) var (indices [0, fromIntegral idx'])
-        store ptr v'
   closureSum <- malloc (struct [T.i64, Codegen.unit]) 2
+  when (isJust var) $ assign (fromJust var) closureSum
   closureTag <- gep (T.ptr T.i64) closureSum (indices [0, 0])
   _ <-
     store
@@ -112,8 +99,21 @@ clambda tys (Define (name, ty) params _) = do
   closureDatum <- gep (T.ptr Codegen.unit) closureSum (indices [0, 1])
   closurePtrBitCast <- bitCast Codegen.unit closurePtr
   _ <- store closureDatum closurePtrBitCast
+  fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
+  _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
+  freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
+  freeMem <- malloc freeType (fromIntegral (length free))
+  freeBitCast <- bitCast Codegen.unit freeMem
+  _ <- store freePtrPtr freeBitCast
+  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, _)) -> do
+    v <- getvar n
+    case v of
+      Nothing -> error $ "variable not in scope: " ++ n
+      Just v' -> do
+        ptr <- gep (T.ptr sumType) freeMem (indices [0, fromIntegral idx'])
+        store ptr v'
   return closureSum
-clambda _ _ = error "not a lambda definition"
+clambda _ _ _ = error "not a lambda definition"
 
 cbinding :: [Type] -> Defs -> (Typed, Expression Typed) -> Codegen ()
 cbinding tys globals ((name, _), expr) = do
@@ -172,7 +172,7 @@ cgen tys globals (Variable x) = do
     Just x'' -> return x''
     Nothing ->
       case Map.lookup name globals of
-        Just def -> clambda tys def
+        Just def -> clambda Nothing tys def
         _ -> error $ "variable not in scope: " ++ name
 cgen _ _ Lambda {} = error "lambda lifting unsuccessful"
 cgen tys globals (Let bindings expr) = do
@@ -229,52 +229,21 @@ cgen tys globals (Case ((x, _), e) clauses) = do
   retptrptr <- malloc sumType 1
   _ <- switch tag' merge dests
   _ <-
-    forM_ (zip3 ts exprs blks) $
-    (\(t, expr, block) -> do
-       _ <- setBlock block
-       expr' <- cgen tys globals expr
-       let idx = fromJust $ t `elemIndex` tys
-       let idx' = constant $ C.Int 64 (fromIntegral idx)
-       _ <- store retptrptr expr'
-       br merge)
+    forM_
+      (zip exprs blks)
+      (\(expr, block) -> do
+         _ <- setBlock block
+         expr' <- cgen tys globals expr
+         _ <- store retptrptr expr'
+         br merge)
   _ <- setBlock merge
   load sumType retptrptr
 cgen tys globals (Fix (n, _) (Variable (n', _))) = do
-  let (Define (name, ty) params _) =
+  let def =
         fromMaybe
-          (error $ "variable not in scope: " ++ name)
+          (error $ "variable not in scope: " ++ n)
           (Map.lookup n' globals)
-  let name' = read name :: Word
-  let free = tail params
-  let freeType = struct (replicate (length free) sumType)
-  let fnType = func sumType [Codegen.unit, sumType]
-  let fnPtrType = T.ptr fnType
-  let closureType = struct [fnPtrType, Codegen.unit]
-  closurePtr <- malloc closureType 2
-  closureSum <- malloc (struct [T.i64, Codegen.unit]) 2
-  closureTag <- gep (T.ptr T.i64) closureSum (indices [0, 0])
-  _ <-
-    store
-      closureTag
-      (constant $ C.Int 64 (fromIntegral . fromJust $ ty `elemIndex` tys))
-  closureDatum <- gep (T.ptr Codegen.unit) closureSum (indices [0, 1])
-  closurePtrDatum <- bitCast Codegen.unit closurePtr
-  _ <- store closureDatum closurePtrDatum
-  assign n closureSum
-  fnPtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 0])
-  _ <- store fnPtrPtr (externf (AST.UnName name') fnType)
-  freePtrPtr <- gep (T.ptr fnPtrType) closurePtr (indices [0, 1])
-  var <- malloc freeType (fromIntegral (length free))
-  freeBitCast <- bitCast Codegen.unit var
-  _ <- store freePtrPtr freeBitCast
-  forM_ (zip [0 .. (length free - 1)] free) $ \(idx', (n, _)) -> do
-    v <- getvar n
-    case v of
-      Nothing -> error $ "variable not in scope: " ++ n
-      Just v' -> do
-        ptr <- gep (T.ptr sumType) var (indices [0, fromIntegral idx'])
-        store ptr v'
-  return closureSum
+  clambda (Just n) tys def
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return
