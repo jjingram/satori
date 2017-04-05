@@ -14,7 +14,7 @@ lexer :: Token.TokenParser ()
 lexer = Token.makeTokenParser style
   where
     names =
-      [ "cons"
+      [ "nil"
       , "."
       , "quote"
       , "'"

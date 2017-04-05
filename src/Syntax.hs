@@ -12,7 +12,6 @@ type Program a = [Top a]
 
 data Top a
   = Define a
-           [a]
            (Expression a)
   | Declare Name
             [Type]
@@ -83,7 +82,7 @@ binops =
 
 definitions :: Program Name -> [(Name, Expression Name)]
 definitions [] = []
-definitions (Define name _ expr:rest) = (name, expr) : definitions rest
+definitions (Define name expr:rest) = (name, expr) : definitions rest
 definitions (_:rest) = definitions rest
 
 typeOf :: Expression Typed -> Type.Type
@@ -122,7 +121,7 @@ retty x = x
 
 filterPolymorphic :: Program Typed -> Program Typed
 filterPolymorphic [] = []
-filterPolymorphic (x@(Define _ _ e):rest) =
+filterPolymorphic (x@(Define _ e):rest) =
   if isPolymorphic e
     then filterPolymorphic rest
     else x : filterPolymorphic rest
@@ -146,12 +145,12 @@ isPolymorphic x = isPolymorphicType $ typeOf x
 
 definitions' :: Program Typed -> [(Name, Top Typed)]
 definitions' [] = []
-definitions' (top@(Define (name, _) _ _):rest) = (name, top) : definitions' rest
+definitions' (top@(Define (name, _) _):rest) = (name, top) : definitions' rest
 definitions' (_:rest) = definitions' rest
 
 types :: Program Typed -> [Type]
 types [] = []
-types (Define _ _ expr:rest) = types' expr ++ types rest
+types (Define _ expr:rest) = types' expr ++ types rest
 types (Declare _ tys:rest) = tys ++ types rest
 types (Command expr:rest) = types' expr ++ types rest
 

@@ -21,7 +21,6 @@ import LLVM.General.AST as AST
 
 import Codegen
 import Curry
-import Desugar
 import Emit
 import Environment
 import Infer
@@ -69,17 +68,13 @@ exec :: Bool -> String -> Repl ()
 exec update source = do
   st <- get
   prog <- hoistError $ parseModule "<stdin>" source
-  liftIO $ putStrLn "# Parsed"
   liftIO $ mapM_ (putStrLn . pptop) prog
-  let desugared = desugar prog
-  let defs = definitions desugared ++ tmctx st
-  let subbed = substitute (Map.fromList defs) desugared
-  liftIO $ putStrLn "# Substituted"
+  let defs = definitions prog ++ tmctx st
+  let subbed = substitute (Map.fromList defs) prog
   liftIO $ mapM_ (putStrLn . pptop) subbed
   let curried = map curryTop subbed
-  liftIO $ putStrLn "# Curried"
   liftIO $ mapM_ (putStrLn . pptop) curried
-  let defs' = definitions curried
+  let defs' = definitions curried ++ tmctx st
   tyctx' <- hoistError $ inferTop (tyctx st) defs'
   let tyctx'' = tyctx' `mappend` tyctx st
   let core = constraintsTop tyctx'' curried
@@ -88,11 +83,9 @@ exec update source = do
   if not (null corel)
     then liftIO $ mapM_ print corel
     else do
-      liftIO $ putStrLn "# Typed"
       liftIO $ mapM_ (putStrLn . pptop) corer
       let mono = filterPolymorphic corer
       let (mono', count') = lambdaLiftProgram (Main.count st) [] mono
-      liftIO $ putStrLn "# Lifted"
       liftIO $ mapM_ (putStrLn . pptop) mono'
       let tys' = nub $ Main.tys st ++ types mono'
       mod' <- liftIO $ codegen (Main.mod st) mono' tys'

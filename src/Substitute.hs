@@ -10,14 +10,13 @@ substitute :: Subs -> Program Name -> Program Name
 substitute _ [] = []
 substitute subs (top:rest) =
   case top of
-    (Define name _ expr) ->
+    (Define name expr) ->
       let expr' = substitute' (Map.delete name subs) expr
       in let expr'' =
                if isRecursive name expr'
                  then Fix name expr'
                  else expr'
-         in Define name [] expr'' :
-            substitute (Map.insert name expr'' subs) rest
+         in Define name expr'' : substitute (Map.insert name expr'' subs) rest
     top'@Declare {} -> top' : substitute subs rest
     (Command expr) -> Command (substitute' subs expr) : substitute subs rest
   where

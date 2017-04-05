@@ -148,11 +148,8 @@ clause p (ty, expr) = parens (ppr p ty <+> ppr p expr)
 
 instance Pretty a =>
          Pretty (Top a) where
-  ppr p (Define name params expr) =
-    parens $
-    text "define" <+>
-    parensIf (not (null params)) (ppr p name <+> hsep (map (ppr p) params)) $$
-    nest 1 (ppr p expr)
+  ppr p (Define name expr) =
+    parens $ text "define" <+> ppr p name $$ nest 1 (ppr p expr)
   ppr p (Declare name params) =
     parens $ text "declare" <+> ppr p name <+> hsep (map (ppr p) params)
   ppr p (Command expr) = ppr p expr

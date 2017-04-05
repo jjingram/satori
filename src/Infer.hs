@@ -142,17 +142,16 @@ substituteType sub expr =
 
 constraintsTop :: Environment -> Program Name -> [Either TypeError (Top Typed)]
 constraintsTop _ [] = []
-constraintsTop env (Define name xs e:rest) =
-  case constraintsExpr env e of
+constraintsTop env (Define name body:rest) =
+  case constraintsExpr env body of
     Left err -> Left err : constraintsTop env rest
-    Right (_, _, _, Forall _ t, e') ->
-      Right (Define (name, t) (zip xs (map (nth t) [0 .. (length xs - 1)])) e') :
-      constraintsTop env rest
+    Right (_, _, _, Forall _ t, body') ->
+      Right (Define (name, t) body') : constraintsTop env rest
 constraintsTop env (Declare {}:rest) = constraintsTop env rest
 constraintsTop env (Command expr:rest) =
   case constraintsExpr env expr of
     Left err -> Left err : constraintsTop env rest
-    Right (_, _, _, _, e') -> Right (Command e') : constraintsTop env rest
+    Right (_, _, _, _, expr') -> Right (Command expr') : constraintsTop env rest
 
 constraintsExpr
   :: Environment

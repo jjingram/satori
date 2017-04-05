@@ -20,13 +20,18 @@ integer = do
   n <- L.integer
   return $ Quote $ Atom $ Integer n
 
+nil :: Parser Atom
+nil = do
+  L.reserved "nil"
+  return Nil
+
 symbol :: Parser Atom
 symbol = do
   s <- L.identifier
   return $ Symbol s
 
 atom :: Parser Sexp
-atom = fmap Atom (fmap Integer L.integer <|> symbol)
+atom = fmap Atom (fmap Integer L.integer <|> symbol <|> Parser.nil)
 
 pair :: Parser Sexp
 pair =
@@ -136,7 +141,7 @@ expression =
   call
 
 quasiatom :: Parser (Quasisexp Name)
-quasiatom = fmap Quasiatom (fmap Integer L.integer <|> symbol)
+quasiatom = fmap Quasiatom (fmap Integer L.integer <|> symbol <|> Parser.nil)
 
 quasipair :: Parser (Quasisexp Name)
 quasipair =
@@ -145,9 +150,6 @@ quasipair =
     L.reserved "."
     cdr <- quasisexp
     return $ foldr Quasicons cdr car
-
-quasinil :: Parser (Quasisexp Name)
-quasinil = return $ Quasiatom Nil
 
 quasilist :: Parser (Quasisexp Name)
 quasilist =
@@ -179,9 +181,9 @@ define :: Parser (Top Name)
 define =
   L.parens $ do
     L.reserved "define"
-    (name:formals) <- L.parens $ many1 L.identifier
+    name <- L.identifier
     body <- expression
-    return $ Define name formals body
+    return $ Define name body
 
 declare :: Parser (Top Name)
 declare =

@@ -37,23 +37,22 @@ main =
           "(let ((gcd (lambda (x y) (if (eq y 0) x (gcd y (srem x y)))))) (gcd 12 4))" `shouldReturn`
         Right 4
     describe "define" $ do
-      it "can define constants" $
-        eval "(define (x) 0) (x)" `shouldReturn` Right 0
+      it "can define constants" $ eval "(define x 0) x" `shouldReturn` Right 0
       it "can define functions" $
-        eval "(define (id x) x) (id 0)" `shouldReturn` Right 0
+        eval "(define id (lambda (x) x)) (id 0)" `shouldReturn` Right 0
       it "can define functions with multiple arguments" $
-        eval "(define (foo x y) x) (foo 0 1)" `shouldReturn` Right 0
+        eval "(define foo (lambda (x y) x)) (foo 0 1)" `shouldReturn` Right 0
       it "can define recursive functions" $
         eval
-          "(define (factorial n) (if (eq n 0) 1 (mul n (factorial (sub n 1))))) (factorial 5)" `shouldReturn`
+          "(define factorial (lambda (n) (if (eq n 0) 1 (mul n (factorial (sub n 1)))))) (factorial 5)" `shouldReturn`
         Right 120
       it "can define recursive functions of more than one variable" $
         eval
-          "(define (gcd x y) (if (eq y 0) x (gcd y (srem x y)))) (gcd 259 111)" `shouldReturn`
+          "(define gcd (lambda (x y) (if (eq y 0) x (gcd y (srem x y))))) (gcd 259 111)" `shouldReturn`
         Right 37
       it "can define mutually recursive functions" $
         eval
-          "(define (even? n) (if (eq n 0) 1 (odd? (sub n 1)))) (define (odd? n) (if (eq n 0) 0 (even? (sub n 1)))) (even? 5)" `shouldReturn`
+          "(define even? (lambda (n) (if (eq n 0) 1 (odd? (sub n 1))))) (define odd? (lambda (n) (if (eq n 0) 0 (even? (sub n 1))))) (even? 5)" `shouldReturn`
         Right 0
     describe "if" $ do
       it "can choose the true branch" $

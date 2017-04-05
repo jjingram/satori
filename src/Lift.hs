@@ -98,7 +98,7 @@ lambdaLift (Lambda x e) = do
   name <- fresh
   e' <- lambdaLift e
   let ty' = TypeArrow ty (typeOf e')
-  let def = Define (name, ty') x e'
+  let def = Define (name, ty') (Lambda x e')
   tell [def]
   return $ Variable (name, ty')
 lambdaLift (Let b e2) = do
@@ -122,7 +122,7 @@ lambdaLift (Fix name e) = do
 lambdaLiftTop :: Word -> [Typed] -> Top Typed -> (Program Typed, Word)
 lambdaLiftTop count globals top =
   case top of
-    (Define _ [] body) -> (defs, count')
+    (Define _ body) -> (defs, count')
       where ((_, defs), count') =
               flip runState count . runWriterT . lambdaLift $
               convert globals [] body

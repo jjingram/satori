@@ -19,7 +19,6 @@ library
                      , Codegen
                      , Curry
                      , Parser
-                     , Desugar
                      , Emit
                      , Environment
                      , Eval

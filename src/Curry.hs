@@ -5,7 +5,7 @@ import Prelude hiding (curry)
 import Syntax
 
 curryTop :: Top Name -> Top Name
-curryTop (Define name _ body) = Define name [] (curry body)
+curryTop (Define name body) = Define name (curry body)
 curryTop (Declare name tys) = Declare name tys
 curryTop (Command expr) = Command (curry expr)
 

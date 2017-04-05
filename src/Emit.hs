@@ -28,7 +28,7 @@ toSig :: [Type] -> [(AST.Type, AST.Name)]
 toSig = map (\(TypeSymbol x) -> (llvmType (TypeSymbol x), AST.Name x))
 
 codegenTop :: [Type] -> Defs -> Top Typed -> LLVM ()
-codegenTop tys globals (Define (name, _) params body) =
+codegenTop tys globals (Define (name, _) (Lambda params body)) =
   define
     sumType
     name'
@@ -81,7 +81,7 @@ binops =
     ]
 
 clambda :: Maybe Name -> [Type] -> Top Typed -> Codegen AST.Operand
-clambda var tys (Define (name, ty) params _) = do
+clambda var tys (Define (name, ty) (Lambda params body)) = do
   let name' = read name :: Word
   let free = tail params
   let freeType = struct (replicate (length free) sumType)
