@@ -105,7 +105,7 @@ ppconstraints = render . ppr 0
 ppsubst :: Subst -> String
 ppsubst = render . ppr 0
 
-instance Pretty Op where
+instance Pretty BinOp where
   ppr _ Add = text "add"
   ppr _ Sub = text "sub"
   ppr _ Mul = text "mul"
@@ -182,10 +182,6 @@ instance Pretty a =>
   ppr p (If cond tr fl) =
     parens $ text "if" <+> nest 3 (vcat (map (ppr p) [cond, tr, fl]))
   ppr p (Call a b) = parens $ ppr p a <+> hsep (map (ppr p) b)
-  ppr p (Case (x, e) clauses) =
-    parens $
-    text "case" <+>
-    parens (ppr p x <+> ppr p e) $$ nest 1 (vcat (map (clause p) clauses))
   ppr p (Fix e1 e2) = parens (text "fix" <+> ppr p e1 $$ nest 4 (ppr p e2))
 
 instance Pretty Sexp where

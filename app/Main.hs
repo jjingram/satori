@@ -53,7 +53,7 @@ initState =
     (0 :: Word)
     typeSymbols
   where
-    ops' = map (second (Forall [])) (Map.elems ops)
+    ops' = map (second (Forall [])) (Map.elems Syntax.binops)
 
 type Repl a = HaskelineT (StateT IState IO) a
 

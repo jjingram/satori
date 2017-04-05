@@ -50,7 +50,7 @@ quote =
   try (char '\'' >> fmap Quote sexp) <|>
   L.parens (L.reserved "quote" >> fmap Quote sexp)
 
-binops :: Map.Map String Op
+binops :: Map.Map String BinOp
 binops =
   Map.fromList
     [ ("add", Add)
@@ -62,16 +62,19 @@ binops =
     , ("eq", Syntax.EQ)
     ]
 
-binop'' :: String -> Parser Op
+binop'' :: String -> Parser BinOp
 binop'' op = do
   L.reservedOp op
-  case Map.lookup op binops of
+  case Map.lookup op Parser.binops of
     Nothing -> fail $ "unknown operator " ++ op
     Just op' -> return op'
 
-binop' :: Parser Op
+binop' :: Parser BinOp
 binop' =
-  foldl (\parser op -> binop'' op <|> parser) parserZero (Map.keys binops)
+  foldl
+    (\parser op -> binop'' op <|> parser)
+    parserZero
+    (Map.keys Parser.binops)
 
 binop :: Parser (Expression Name)
 binop =
@@ -124,30 +127,12 @@ call =
     (operator:operands) <- many1 expression
     return $ Call operator operands
 
-case' :: Parser (Expression Name)
-case' =
-  L.parens $ do
-    L.reserved "case"
-    (var, expr) <-
-      L.parens $ do
-        v <- L.identifier
-        e <- expression
-        return (v, e)
-    clauses <-
-      many1
-        (L.parens $ do
-           ty <- L.identifier
-           form <- expression
-           return (TypeSymbol ty, form))
-    return $ Case (var, expr) clauses
-
 expression :: Parser (Expression Name)
 expression =
   integer <|> try quote <|> try quasiquote <|> try binop <|> try variable <|>
   try lambda <|>
   try let' <|>
   try if' <|>
-  try case' <|>
   call
 
 quasiatom :: Parser (Quasisexp Name)

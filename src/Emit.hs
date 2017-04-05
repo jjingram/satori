@@ -68,7 +68,7 @@ codegenTop tys globals (Command expr) = defineMain T.i64 blks
         res <- load T.i64 resPtr
         ret res
 
-binops :: Map.Map Op (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
+binops :: Map.Map BinOp (AST.Operand -> AST.Operand -> AST.Type -> Codegen AST.Operand)
 binops =
   Map.fromList
     [ (Add, add)
@@ -136,8 +136,8 @@ cgen tys _ (Quote (Atom (Integer n))) = do
   _ <- store resPtrDatumBitCast nPtr
   return resPtr
 cgen tys globals (BinOp op a b) = do
-  let f = binops Map.! op
-  let (_, ty) = ops Map.! op
+  let f = Emit.binops Map.! op
+  let (_, ty) = Syntax.binops Map.! op
   let (TypeArrow ta (TypeArrow tb rty)) = ty
   let rty' = llvmType rty
   ca <- cgen tys globals a
@@ -215,29 +215,6 @@ cgen tys globals (Call fn args) = do
   freePtrPtr <- gep Codegen.unit closurePtr (indices [0, 1])
   freePtr <- load Codegen.unit freePtrPtr
   call fnPtr [freePtr, carg] sumType
-cgen tys globals (Case ((x, _), e) clauses) = do
-  let (ts, exprs) = unzip clauses
-  blks <- mapM (\(TypeSymbol s) -> addBlock ("case." ++ s)) ts
-  merge <- addBlock "case.default"
-  ce <- cgen tys globals e
-  assign x ce
-  tagPtr <- gep (T.ptr T.i64) ce (indices [0, 0])
-  tag <- load T.i64 tagPtr
-  tag' <- instr T.i32 $ AST.Trunc tag T.i32 []
-  let idxs = map (C.Int 32 . fromIntegral . fromJust . flip elemIndex tys) ts
-  let dests = zip idxs blks
-  retptrptr <- malloc sumType 1
-  _ <- switch tag' merge dests
-  _ <-
-    forM_
-      (zip exprs blks)
-      (\(expr, block) -> do
-         _ <- setBlock block
-         expr' <- cgen tys globals expr
-         _ <- store retptrptr expr'
-         br merge)
-  _ <- setBlock merge
-  load sumType retptrptr
 cgen tys globals (Fix (n, _) (Variable (n', _))) = do
   let def =
         fromMaybe

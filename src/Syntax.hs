@@ -22,7 +22,7 @@ data Top a
 data Expression a
   = Quote Sexp
   | Quasiquote (Quasisexp a)
-  | BinOp Op
+  | BinOp BinOp
           (Expression a)
           (Expression a)
   | Variable a
@@ -35,8 +35,6 @@ data Expression a
        (Expression a)
   | Call (Expression a)
          [Expression a]
-  | Case (a, Expression a)
-         [(Type, Expression a)]
   | Fix a
         (Expression a)
   deriving (Eq, Ord, Show)
@@ -61,7 +59,7 @@ data Atom
   | Symbol Name
   deriving (Eq, Ord, Show)
 
-data Op
+data BinOp
   = Add
   | Sub
   | Mul
@@ -71,8 +69,8 @@ data Op
   | EQ
   deriving (Eq, Ord, Show)
 
-ops :: Map.Map Op (Name, Type)
-ops =
+binops :: Map.Map BinOp (Name, Type)
+binops =
   Map.fromList
     [ (Add, ("add", i64 `TypeArrow` (i64 `TypeArrow` i64)))
     , (Mul, ("mul", i64 `TypeArrow` (i64 `TypeArrow` i64)))
@@ -109,14 +107,6 @@ typeOf (If _ tr fl) =
     ttr = typeOf tr
     tfl = typeOf fl
 typeOf (Call f _) = retty $ typeOf f
-typeOf (Case _ clauses') = tys'
-  where
-    (_, bodies) = unzip clauses'
-    tys = map typeOf bodies
-    tys' =
-      if and $ zipWith (==) tys (tail tys)
-        then head tys
-        else foldr1 TypeSum tys
 typeOf (Fix (_, ty) _) = ty
 
 typeOfQuasiquote :: Quasisexp Typed -> Type.Type
@@ -183,6 +173,4 @@ types' expr =
       where (names, exprs) = unzip bindings
     (If cond tr fl) -> types' cond ++ types' tr ++ types' fl
     (Call f args) -> types' f ++ concatMap types' args
-    (Case ((_, ty), _) alts) -> [ty] ++ tys ++ concatMap types' exprs
-      where (tys, exprs) = unzip alts
     (Fix _ x) -> types' x
