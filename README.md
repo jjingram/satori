@@ -2,13 +2,17 @@
 
 ---
 
-# Features
+# Notes
+
+## Symbols
+> In the most trivial implementation, they are essentially named integers (e.g.
+> the enumerated type in C).
 
 ## Pattern matching
-Satori features pattern matching on arbitrary structures. The most basic type of
-pattern are symbol patterns; that is a symbol evaluates to itself. Some examples
-of symbols are `nil`, `t`, and `foo`, with `nil` and `t` being special symbols
-in that `nil` matches against nothing but itself and `t` matches against
+Satori will feature pattern matching on arbitrary structures. The most basic
+type of pattern are symbol patterns; that is a symbol evaluates to itself. Some
+examples of symbols are `nil`, `t`, and `foo`, with `nil` and `t` being special
+symbols in that `nil` matches against nothing but itself and `t` matches against
 anything. A simple example of this is the following in which we compute the
 length of a list:
 
@@ -67,35 +71,33 @@ example of that:
 ```
 
 A powerful pattern is to match against the rest of a list which can be
-demonstrated by refactoring our `eval` example with what we've learned so far:
+demonstrated by re-factoring our `eval` example with what we've learned so far:
 
 ```lisp
 (define (eval x)
   (case x
-    ((lambda ,params ,@body) (eval-lambda params body))
-    ((,f ,@args) (eval-app f args))))
+    ((lambda ,params . ,body) (eval-lambda params body))
+    ((,f . ,args) (eval-app f args))))
 ```
 
 As you can see, variables must be unquoted because quoted literals evaluate to
 themselves. In this example we've left the symbol `lambda` quoted because we
 wanted to match against the symbol `lambda` at the start of the list.
 
-Finally we have the wildcard pattern which matches against anything but doesn't bind any variables. We could introduce a projection function using the wildcard pattern:
+Finally we have the wild card pattern which matches against anything but doesn't
+bind any variables. We could introduce a projection function using the wild card
+pattern:
 
 ```lisp
 (define (second x)
   (case x
-    (`(_ . (snd . _)) snd)))
+    ((_ . (snd . _)) snd)))
 ```
 
 In general we have the following constructs for pattern matching:
 
-* Special symbols 
+* Special symbols: `t` and `nil`
 * Quoted patterns like `0`, `foo` and `(1 . 2)`
-* Quasiquoted patterns where literals evaluate to themself and variable bindings
-  can be introduced with `,` and `,@` (`,` matches a single item while `,@`
-  matches the rest of a list)
-
-## Symbols
-> In the most trivial implementation, they are essentially named integers (e.g.
-> the enumerated type in C).
+* Quasiquoted patterns where literals evaluate to themselves and variable
+  bindings can be introduced with `,`
+  
