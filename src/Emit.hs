@@ -81,7 +81,7 @@ binops =
     ]
 
 clambda :: Maybe Name -> [Type] -> Top Typed -> Codegen AST.Operand
-clambda var tys (Define (name, ty) (Lambda params body)) = do
+clambda var tys (Define (name, ty) (Lambda params _)) = do
   let name' = read name :: Word
   let free = tail params
   let freeType = struct (replicate (length free) sumType)
@@ -95,7 +95,8 @@ clambda var tys (Define (name, ty) (Lambda params body)) = do
   _ <-
     store
       closureTag
-      (constant $ C.Int 64 (fromIntegral . fromJust $ ty `elemIndex` tys))
+      (constant $
+       C.Int 64 (fromIntegral . fromJust $ TypeSymbol "lambda" `elemIndex` tys))
   closureDatum <- gep (T.ptr Codegen.unit) closureSum (indices [0, 1])
   closurePtrBitCast <- bitCast Codegen.unit closurePtr
   _ <- store closureDatum closurePtrBitCast

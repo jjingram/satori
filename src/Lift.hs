@@ -97,10 +97,9 @@ lambdaLift (Lambda x e) = do
   let (_, ty) = head x
   name <- fresh
   e' <- lambdaLift e
-  let ty' = TypeArrow ty (typeOf e')
-  let def = Define (name, ty') (Lambda x e')
+  let def = Define (name, ty) (Lambda x e')
   tell [def]
-  return $ Variable (name, ty')
+  return $ Variable (name, ty)
 lambdaLift (Let b e2) = do
   let (x, e1) = head b
   e1' <- lambdaLift e1

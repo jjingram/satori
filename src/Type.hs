@@ -23,14 +23,20 @@ data Scheme =
 nil :: Type
 nil = TypeSymbol "nil"
 
+t :: Type
+t = TypeSymbol "t"
+
 i1 :: Type
 i1 = TypeSymbol "i1"
 
 i64 :: Type
 i64 = TypeSymbol "i64"
 
+lambda :: Type
+lambda = TypeSymbol "lambda"
+
 typeSymbols :: [Type]
-typeSymbols = [nil, TypeSymbol "t", i1, i64]
+typeSymbols = [nil, t, i1, i64, lambda]
 
 nth :: Type -> Int -> Type
 nth ty idx = nth' ty 0

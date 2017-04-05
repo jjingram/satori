@@ -145,8 +145,8 @@ constraintsTop _ [] = []
 constraintsTop env (Define name body:rest) =
   case constraintsExpr env body of
     Left err -> Left err : constraintsTop env rest
-    Right (_, _, _, Forall _ t, body') ->
-      Right (Define (name, t) body') : constraintsTop env rest
+    Right (_, _, _, Forall _ ty, body') ->
+      Right (Define (name, ty) body') : constraintsTop env rest
 constraintsTop env (Declare {}:rest) = constraintsTop env rest
 constraintsTop env (Command expr:rest) =
   case constraintsExpr env expr of
@@ -213,8 +213,8 @@ infer expr =
     Quote sexp@(Cons car cdr) ->
       return (inferQuote sexp, [], Quote (Cons car cdr))
     Quasiquote sexp -> do
-      (t, c, sexp') <- inferQuasiquote sexp
-      return (t, c, Quasiquote sexp')
+      (ty, c, sexp') <- inferQuasiquote sexp
+      return (ty, c, Quasiquote sexp')
     BinOp op e1 e2 -> do
       (t1, c1, e1') <- infer e1
       (t2, c2, e2') <- infer e2
@@ -223,13 +223,13 @@ infer expr =
           u2 = snd $ Syntax.binops Map.! op
       return (tv, c1 ++ c2 ++ [(u1, u2)], BinOp op e1' e2')
     Variable x -> do
-      t <- lookupEnvironment x
-      return (t, [], Variable (x, t))
+      ty <- lookupEnvironment x
+      return (ty, [], Variable (x, ty))
     Lambda x e -> do
       tv <- fresh
       let name = head x
-      (t, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
-      return (tv `TypeArrow` t, c, Lambda [(name, tv)] e')
+      (ty, c, e') <- inEnvironment (name, Forall [] tv) (infer e)
+      return (tv `TypeArrow` ty, c, Lambda [(name, tv)] e')
     Call e1 e2 -> do
       let e2' = head e2
       (t1, c1, e1') <- infer e1

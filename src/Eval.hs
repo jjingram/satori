@@ -98,12 +98,11 @@ eval source =
           if not (null corel)
             then return $ Left $ concatMap show corel
             else do
-              let mono = filterPolymorphic corer
-              let (mono', _) = lambdaLiftProgram 0 [] mono
-              let tys' = nub $ typeSymbols ++ types mono'
+              let undef = filterDefinitions corer
+              let (lifted, _) = lambdaLiftProgram 0 [] undef
               mod' <-
                 Eval.codegen
                   (AST.defaultModule {AST.moduleName = "test"})
-                  mono'
-                  tys'
+                  lifted
+                  typeSymbols
               return $ runJIT mod'

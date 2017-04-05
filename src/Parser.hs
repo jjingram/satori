@@ -135,7 +135,7 @@ call =
 expression :: Parser (Expression Name)
 expression =
   integer <|> try quote <|> try quasiquote <|> try binop <|> try variable <|>
-  try lambda <|>
+  try Parser.lambda <|>
   try let' <|>
   try if' <|>
   call
